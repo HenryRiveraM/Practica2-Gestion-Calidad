@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GlobalExceptionHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.exception</a> &gt; <span class="el_source">GlobalExceptionHandler.java</span></div><h1>GlobalExceptionHandler.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.exception;
+
+import jakarta.persistence.EntityNotFoundException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
+import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.hibernate.ObjectNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+
+@ControllerAdvice
+<span class="fc" id="L22">public class GlobalExceptionHandler {</span>
+<span class="fc" id="L23">    private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);</span>
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleNotFound(ResourceNotFoundException ex, HttpServletRequest request) {
+<span class="nc" id="L27">        return buildError(HttpStatus.NOT_FOUND, safeMessage(ex.getMessage(), &quot;Recurso no encontrado&quot;));</span>
+    }
+
+    @ExceptionHandler({EntityNotFoundException.class, ObjectNotFoundException.class})
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleEntityNotFound(RuntimeException ex, HttpServletRequest request) {
+<span class="fc" id="L32">        return buildError(HttpStatus.NOT_FOUND, &quot;Recurso no encontrado&quot;);</span>
+    }
+
+    @ExceptionHandler(BusinessRuleException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleBusinessRule(BusinessRuleException ex, HttpServletRequest request) {
+<span class="fc" id="L37">        return buildError(HttpStatus.BAD_REQUEST, safeMessage(ex.getMessage(), &quot;Solicitud inválida&quot;));</span>
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleIllegalArgument(
+            IllegalArgumentException ex, HttpServletRequest request) {
+<span class="fc" id="L43">        return buildError(HttpStatus.BAD_REQUEST, &quot;Solicitud inválida.&quot;);</span>
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleDataIntegrityViolation(
+            DataIntegrityViolationException ex, HttpServletRequest request) {
+<span class="fc" id="L49">        logger.warn(&quot;Conflicto de integridad de datos en {}: {}&quot;, request.getRequestURI(), ex.getMostSpecificCause().getMessage());</span>
+<span class="fc" id="L50">        return buildError(HttpStatus.CONFLICT, &quot;La operación entra en conflicto con los datos existentes.&quot;);</span>
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleUnreadableMessage(
+            HttpMessageNotReadableException ex, HttpServletRequest request) {
+<span class="fc" id="L56">        return buildError(HttpStatus.BAD_REQUEST, &quot;El cuerpo de la solicitud está vacío o tiene un formato inválido.&quot;);</span>
+    }
+
+    @ExceptionHandler(DuplicateRegistrationException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleDuplicateRegistration(
+            DuplicateRegistrationException ex, HttpServletRequest request) {
+<span class="fc" id="L62">        return buildError(HttpStatus.CONFLICT, safeMessage(ex.getMessage(), &quot;La inscripción ya existe&quot;));</span>
+    }
+
+    @ExceptionHandler(InvalidRegistrationTokenException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleInvalidRegistrationToken(
+            InvalidRegistrationTokenException ex, HttpServletRequest request) {
+<span class="fc" id="L68">        return buildError(HttpStatus.NOT_FOUND, safeMessage(ex.getMessage(), &quot;Inscripción no encontrada&quot;));</span>
+    }
+
+    @ExceptionHandler(DuplicateCheckInException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleDuplicateCheckIn(
+            DuplicateCheckInException ex, HttpServletRequest request) {
+<span class="fc" id="L74">        return buildError(HttpStatus.CONFLICT, safeMessage(ex.getMessage(), &quot;El check-in ya fue realizado&quot;));</span>
+    }
+
+    @ExceptionHandler(DuplicateSurveyException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleDuplicateSurvey(
+            DuplicateSurveyException ex, HttpServletRequest request) {
+<span class="fc" id="L80">        return buildError(HttpStatus.CONFLICT, safeMessage(ex.getMessage(), &quot;La encuesta ya existe&quot;));</span>
+    }
+
+    @ExceptionHandler(AiProviderException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleAiProviderError(
+            AiProviderException ex, HttpServletRequest request) {
+<span class="fc" id="L86">        logger.warn(&quot;El proveedor externo no pudo procesar la solicitud en {}: {}&quot;, request.getRequestURI(), ex.getMessage(), ex);</span>
+<span class="fc" id="L87">        return buildError(HttpStatus.BAD_GATEWAY, ex.getClientMessage());</span>
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
+<span class="fc" id="L92">        Map&lt;String, String&gt; fieldErrors = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {</span>
+<span class="fc" id="L94">            fieldErrors.put(fieldError.getField(), fieldError.getDefaultMessage());</span>
+<span class="fc" id="L95">        }</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        String message = fieldErrors.isEmpty() ? &quot;Validación fallida&quot; : fieldErrors.toString();</span>
+<span class="fc" id="L97">        return buildError(HttpStatus.BAD_REQUEST, message);</span>
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleConstraintViolation(
+            ConstraintViolationException ex, HttpServletRequest request) {
+<span class="nc" id="L103">        String message = ex.getConstraintViolations().stream()</span>
+<span class="nc" id="L104">                .map(violation -&gt; violation.getMessage())</span>
+<span class="nc" id="L105">                .sorted()</span>
+<span class="nc" id="L106">                .findFirst()</span>
+<span class="nc" id="L107">                .orElse(&quot;Validación fallida&quot;);</span>
+<span class="nc" id="L108">        return buildError(HttpStatus.BAD_REQUEST, message);</span>
+    }
+
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity&lt;Map&lt;String,Object&gt;&gt; denied(org.springframework.security.access.AccessDeniedException ex) {
+<span class="nc" id="L113">        return buildError(HttpStatus.FORBIDDEN, &quot;No tienes permiso para esta operación o evento.&quot;);</span>
+    }
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity&lt;Map&lt;String,Object&gt;&gt; status(org.springframework.web.server.ResponseStatusException ex) {
+<span class="nc" id="L117">        return buildError(HttpStatus.valueOf(ex.getStatusCode().value()), ex.getReason());</span>
+    }
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleGeneral(Exception ex, HttpServletRequest request) {
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        StackTraceElement origin = ex.getStackTrace().length == 0 ? null : ex.getStackTrace()[0];</span>
+<span class="fc" id="L122">        logger.error(&quot;Error inesperado al procesar la solicitud. tipo={}, origen={}&quot;,</span>
+<span class="fc" id="L123">                ex.getClass().getSimpleName(), origin);</span>
+<span class="fc" id="L124">        return buildError(HttpStatus.INTERNAL_SERVER_ERROR, &quot;Error interno del servidor&quot;);</span>
+    }
+
+    private ResponseEntity&lt;Map&lt;String, Object&gt;&gt; buildError(HttpStatus status, String message) {
+<span class="fc" id="L128">        Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L129">        body.put(&quot;timestamp&quot;, OffsetDateTime.now());</span>
+<span class="fc" id="L130">        body.put(&quot;status&quot;, status.value());</span>
+<span class="fc" id="L131">        body.put(&quot;message&quot;, message);</span>
+<span class="fc" id="L132">        return ResponseEntity.status(status).body(body);</span>
+    }
+
+    private static String safeMessage(String message, String fallback) {
+<span class="pc bpc" id="L136" title="2 of 4 branches missed.">        return message == null || message.isBlank() ? fallback : message;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

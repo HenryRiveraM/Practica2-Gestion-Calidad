@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BaseCrudController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.controller</a> &gt; <span class="el_source">BaseCrudController.java</span></div><h1>BaseCrudController.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.controller;
+
+import com.cocacola.eventintelligence.entity.BaseEntity;
+import com.cocacola.eventintelligence.service.AbstractCrudService;
+import jakarta.validation.Valid;
+import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
+
+public abstract class BaseCrudController&lt;T extends BaseEntity&gt; {
+    @org.springframework.beans.factory.annotation.Autowired
+    protected com.cocacola.eventintelligence.security.AccessPolicy access;
+
+    protected final AbstractCrudService&lt;T&gt; service;
+
+<span class="fc" id="L22">    protected BaseCrudController(AbstractCrudService&lt;T&gt; service) {</span>
+<span class="fc" id="L23">        this.service = service;</span>
+<span class="fc" id="L24">    }</span>
+
+    @GetMapping
+    public List&lt;T&gt; findAll() {
+<span class="nc" id="L28">        return service.findAll().stream().filter(access::canRead).toList();</span>
+    }
+
+    @GetMapping(&quot;/{id}&quot;)
+    public T findById(@PathVariable Long id) {
+<span class="nc" id="L33">        var entity = service.findById(id);</span>
+<span class="nc" id="L34">        access.requireRead(entity);</span>
+<span class="nc" id="L35">        return entity;</span>
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public T create(@Valid @RequestBody T entity) {
+<span class="nc" id="L41">        access.requireWrite(entity);</span>
+<span class="nc" id="L42">        return service.create(entity);</span>
+    }
+
+    @PutMapping(&quot;/{id}&quot;)
+    public T update(@PathVariable Long id, @Valid @RequestBody T entity) {
+<span class="nc" id="L47">        access.requireWrite(service.findById(id));</span>
+<span class="nc" id="L48">        access.requireWrite(entity);</span>
+<span class="nc" id="L49">        return service.update(id, entity);</span>
+    }
+
+    @DeleteMapping(&quot;/{id}&quot;)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) {
+<span class="nc" id="L55">        access.requireWrite(service.findById(id));</span>
+<span class="nc" id="L56">        service.delete(id);</span>
+<span class="nc" id="L57">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

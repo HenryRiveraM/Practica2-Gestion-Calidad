@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventImpactScoreService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">EventImpactScoreService.java</span></div><h1>EventImpactScoreService.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import com.cocacola.eventintelligence.exception.ResourceNotFoundException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class EventImpactScoreService {
+    private static final String EVENT_METRICS_SQL = &quot;&quot;&quot;
+            SELECT
+                (SELECT COUNT(*) FROM (
+                    SELECT r.participant_id FROM registrations r WHERE r.event_id = e.id
+                    UNION
+                    SELECT a.participant_id FROM attendances a
+                    WHERE a.event_id = e.id AND a.status &lt;&gt; 'CANCELLED') enrolled) AS registered,
+                (SELECT COUNT(DISTINCT a.participant_id)
+                    FROM attendances a
+                    WHERE a.event_id = e.id AND a.status = 'CHECKED_IN') AS attendees,
+                (SELECT COUNT(DISTINCT engaged.participant_id)
+                    FROM (
+                        SELECT i.participant_id
+                        FROM interactions i
+                        WHERE i.event_id = e.id
+                        UNION
+                        SELECT pi.participant_id
+                        FROM product_interactions pi
+                        WHERE pi.event_id = e.id
+                    ) engaged) AS engaged_participants,
+                (SELECT AVG(s.overall_satisfaction)::double precision
+                    FROM surveys s WHERE s.event_id = e.id) AS average_rating,
+                (SELECT COUNT(DISTINCT c.participant_id)
+                    FROM conversions c WHERE c.event_id = e.id) AS converted_participants,
+                (SELECT COUNT(DISTINCT r.participant_id)
+                    FROM registrations r
+                    WHERE r.event_id = e.id
+                      AND (
+                        EXISTS (
+                            SELECT 1
+                            FROM registrations prior_registration
+                            JOIN events prior_event ON prior_event.id = prior_registration.event_id
+                            WHERE prior_registration.participant_id = r.participant_id
+                              AND prior_event.event_date &lt; e.event_date
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM attendances prior_attendance
+                            JOIN events prior_event ON prior_event.id = prior_attendance.event_id
+                            WHERE prior_attendance.participant_id = r.participant_id
+                              AND prior_attendance.status &lt;&gt; 'CANCELLED'
+                              AND prior_event.event_date &lt; e.event_date
+                        )
+                      )) AS recurrent_participants
+            FROM events e
+            WHERE e.id = ?
+            &quot;&quot;&quot;;
+
+    private final JdbcTemplate jdbcTemplate;
+
+<span class="fc" id="L64">    public EventImpactScoreService(JdbcTemplate jdbcTemplate) {</span>
+<span class="fc" id="L65">        this.jdbcTemplate = jdbcTemplate;</span>
+<span class="fc" id="L66">    }</span>
+
+    @Transactional(readOnly = true)
+    public Map&lt;String, Object&gt; getImpactScore(long eventId) {
+<span class="fc" id="L70">        List&lt;Map&lt;String, Object&gt;&gt; rows = jdbcTemplate.queryForList(EVENT_METRICS_SQL, eventId);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (rows.isEmpty()) {</span>
+<span class="fc" id="L72">            throw new ResourceNotFoundException(&quot;Evento&quot;, eventId);</span>
+        }
+
+<span class="fc" id="L75">        Map&lt;String, Object&gt; row = rows.getFirst();</span>
+<span class="fc" id="L76">        double registered = number(row, &quot;registered&quot;);</span>
+<span class="fc" id="L77">        double attendees = number(row, &quot;attendees&quot;);</span>
+<span class="fc" id="L78">        double engaged = number(row, &quot;engaged_participants&quot;);</span>
+<span class="fc" id="L79">        double recurrent = number(row, &quot;recurrent_participants&quot;);</span>
+<span class="fc" id="L80">        Double averageRating = nullableNumber(row.get(&quot;average_rating&quot;));</span>
+<span class="fc" id="L81">        double converted = number(row, &quot;converted_participants&quot;);</span>
+
+<span class="fc" id="L83">        Map&lt;String, Double&gt; metrics = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L84">        metrics.put(&quot;attendance&quot;, percent(attendees, registered));</span>
+<span class="fc" id="L85">        metrics.put(&quot;engagement&quot;, percent(engaged, attendees));</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        metrics.put(&quot;satisfaction&quot;, averageRating == null ? null : averageRating * 20.0);</span>
+<span class="fc" id="L87">        metrics.put(&quot;conversion&quot;, percent(converted, attendees));</span>
+<span class="fc" id="L88">        metrics.put(&quot;recurrence&quot;, percent(recurrent, registered));</span>
+
+<span class="fc" id="L90">        double weightedTotal = 0.0;</span>
+<span class="fc" id="L91">        double availableWeight = 0.0;</span>
+<span class="fc" id="L92">        List&lt;String&gt; missingMetrics = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L93">        Map&lt;String, Double&gt; appliedWeights = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : EventImpactScoreWeights.WEIGHTS.entrySet()) {</span>
+<span class="fc" id="L95">            Double value = metrics.get(entry.getKey());</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (value == null) {</span>
+<span class="fc" id="L97">                missingMetrics.add(entry.getKey());</span>
+            } else {
+<span class="fc" id="L99">                weightedTotal += value * entry.getValue();</span>
+<span class="fc" id="L100">                availableWeight += entry.getValue();</span>
+<span class="fc" id="L101">                appliedWeights.put(entry.getKey(), entry.getValue());</span>
+            }
+<span class="fc" id="L103">        }</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (availableWeight &gt; 0) {</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            for (String metric : appliedWeights.keySet()) {</span>
+<span class="fc" id="L106">                appliedWeights.put(metric, EventImpactScoreWeights.WEIGHTS.get(metric) / availableWeight);</span>
+<span class="fc" id="L107">            }</span>
+        }
+
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        Double score = availableWeight == 0 ? null : round(weightedTotal / availableWeight);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        String status = score == null</span>
+<span class="fc" id="L112">                ? &quot;INSUFFICIENT_DATA&quot;</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                : missingMetrics.isEmpty() ? &quot;CALCULATED&quot; : &quot;PARTIAL_DATA&quot;;</span>
+
+<span class="fc" id="L115">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L116">        result.put(&quot;eventId&quot;, eventId);</span>
+<span class="fc" id="L117">        result.put(&quot;score&quot;, score);</span>
+<span class="fc" id="L118">        result.put(&quot;status&quot;, status);</span>
+<span class="fc" id="L119">        result.put(&quot;metrics&quot;, metrics);</span>
+<span class="fc" id="L120">        result.put(&quot;weights&quot;, EventImpactScoreWeights.WEIGHTS);</span>
+<span class="fc" id="L121">        result.put(&quot;appliedWeights&quot;, appliedWeights);</span>
+<span class="fc" id="L122">        result.put(&quot;missingMetrics&quot;, missingMetrics);</span>
+<span class="fc" id="L123">        result.put(&quot;formula&quot;, &quot;Weighted average of available 0-100 metrics; weights are renormalized over available metrics.&quot;);</span>
+<span class="fc" id="L124">        result.put(&quot;metricDefinitions&quot;, Map.of(</span>
+                &quot;attendance&quot;, &quot;Checked-in participants / registrations * 100&quot;,
+                &quot;engagement&quot;, &quot;Unique participants with an interaction or product interaction / checked-in participants * 100&quot;,
+                &quot;satisfaction&quot;, &quot;Average overall satisfaction / 5 * 100&quot;,
+                &quot;conversion&quot;, &quot;Unique converted participants / checked-in participants * 100&quot;,
+                &quot;recurrence&quot;, &quot;Registered participants with participation in an earlier event / registrations * 100&quot;));
+<span class="fc" id="L130">        return result;</span>
+    }
+
+    private static double number(Map&lt;String, Object&gt; row, String key) {
+<span class="fc" id="L134">        Object value = row.get(key);</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">        return value instanceof Number numeric ? numeric.doubleValue() : 0.0;</span>
+    }
+
+    private static Double nullableNumber(Object value) {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        return value instanceof Number numeric ? numeric.doubleValue() : null;</span>
+    }
+
+    private static Double percent(double numerator, double denominator) {
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        return denominator == 0 ? null : round(numerator * 100.0 / denominator);</span>
+    }
+
+    private static double round(double value) {
+<span class="fc" id="L147">        return Math.round(value * 10.0) / 10.0;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
