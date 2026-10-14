@@ -1,0 +1,52 @@
+digraph CFG {
+graph [rankdir=TB, bgcolor="white", pad="0.3", nodesep="0.55", ranksep="0.48",
+label="SurveyService.submit - flujo de negocio\nN = 18 | E = 24 | V(G) = 8",
+labelloc=t, fontname="Arial", fontsize=19];
+node [shape=circle, width=0.48, fixedsize=true, style=filled, fillcolor="#ffffff", color="#334155", fontname="Arial", fontsize=13];
+edge [fontname="Arial", fontsize=11, color="#475569", arrowsize=0.7];
+1 [label="1", fillcolor="#ffffff"];
+2 [label="2", fillcolor="#dbeafe"];
+3 [label="3", fillcolor="#ffffff"];
+4 [label="4", fillcolor="#dbeafe"];
+5 [label="5", fillcolor="#ffffff"];
+6 [label="6", fillcolor="#dbeafe"];
+7 [label="7", fillcolor="#ffffff"];
+8 [label="8", fillcolor="#dbeafe"];
+9 [label="9", fillcolor="#ffffff"];
+10 [label="10", fillcolor="#ffffff"];
+11 [label="11", fillcolor="#dbeafe"];
+12 [label="12", fillcolor="#ffffff"];
+13 [label="13", fillcolor="#ffffff"];
+14 [label="14", fillcolor="#dbeafe"];
+15 [label="15", fillcolor="#ffffff"];
+16 [label="16", fillcolor="#dbeafe"];
+17 [label="17", fillcolor="#ffffff"];
+18 [label="18", fillcolor="#ffffff"];
+1 -> 2 [label=""];
+2 -> 4 [label="V"];
+2 -> 3 [label="F"];
+3 -> 18 [label=""];
+4 -> 6 [label="V"];
+4 -> 5 [label="F"];
+5 -> 18 [label=""];
+6 -> 7 [label="V"];
+6 -> 8 [label="F"];
+7 -> 18 [label=""];
+8 -> 10 [label="V"];
+8 -> 9 [label="F"];
+9 -> 18 [label=""];
+10 -> 11 [label=""];
+11 -> 12 [label="V"];
+11 -> 13 [label="F"];
+12 -> 14 [label=""];
+13 -> 14 [label=""];
+14 -> 15 [label="V"];
+14 -> 16 [label="F: integridad"];
+15 -> 18 [label=""];
+16 -> 7 [label="V"];
+16 -> 17 [label="F"];
+17 -> 18 [label=""];
+legend [shape=box, fixedsize=false, style="rounded", fillcolor="white", color="#cbd5e1", margin="0.2", label="1. Inicio\l2. Evento presente?\l3. Lanzar ResourceNotFoundException (evento)\l4. Participante presente?\l5. Lanzar ResourceNotFoundException (participante)\l6. Encuesta ya existe?\l7. Lanzar DuplicateSurveyException\l8. requireCheckedIn retorna normalmente?\l9. Propagar error de asistencia\l10. Crear encuesta y asignar valores\l11. Comentario == null?\l12. Asignar comentario null\l13. Asignar comentario.trim()\l14. saveAndFlush retorna normalmente?\l15. Retornar encuesta persistida\l16. isDuplicateSurveyConstraint(error)?\l17. Propagar error de integridad\l18. Salida unificada\l", fontsize=12];
+{rank=same; 1; legend;}
+1 -> legend [style=invis];
+}
