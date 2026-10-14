@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserAdminController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.controller</a> &gt; <span class="el_source">UserAdminController.java</span></div><h1>UserAdminController.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.controller;
+
+import com.cocacola.eventintelligence.security.*;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.*;
+import java.util.*;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping(&quot;/api/admin/users&quot;)
+public class UserAdminController {
+    private final AccountManagement management;
+    private final AccessPolicy access;
+<span class="nc" id="L14">    public UserAdminController(AccountManagement management, AccessPolicy access) { this.management=management; this.access=access; }</span>
+<span class="nc" id="L15">    public record CreateUser(@NotBlank @Size(max=120) String name, @NotBlank @Email @Size(max=255) String email,</span>
+                             @NotEmpty Set&lt;@NotNull Role&gt; roles, @NotNull Set&lt;@Positive Long&gt; eventIds) {}
+<span class="nc" id="L17">    public record UpdateUser(@NotBlank @Size(max=120) String name, boolean enabled,</span>
+                             @NotEmpty Set&lt;@NotNull Role&gt; roles, @NotNull Set&lt;@Positive Long&gt; eventIds) {}
+<span class="nc" id="L19">    @GetMapping public List&lt;Map&lt;String,Object&gt;&gt; list() { access.requireAdmin(); return management.list(); }</span>
+    @PostMapping public Map&lt;String,Object&gt; create(@Valid @RequestBody CreateUser body) {
+<span class="nc" id="L21">        access.requireAdmin(); return management.create(access.account().id(),body.name(),body.email(),body.roles(),body.eventIds());</span>
+    }
+    @PutMapping(&quot;/{id}&quot;) public Map&lt;String,Object&gt; update(@PathVariable Long id, @Valid @RequestBody UpdateUser body) {
+<span class="nc" id="L24">        access.requireAdmin(); return management.update(access.account().id(),id,body.name(),body.enabled(),body.roles(),body.eventIds());</span>
+    }
+    @PostMapping(&quot;/{id}/activation&quot;) public Map&lt;String,String&gt; invite(@PathVariable Long id) {
+<span class="nc" id="L27">        access.requireAdmin(); return Map.of(&quot;activationToken&quot;,management.invite(access.account().id(),id));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

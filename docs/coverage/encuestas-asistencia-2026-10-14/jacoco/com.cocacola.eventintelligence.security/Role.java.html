@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Role.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.security</a> &gt; <span class="el_source">Role.java</span></div><h1>Role.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.security;
+
+import java.util.Set;
+
+<span class="nc" id="L5">public enum Role {</span>
+<span class="nc" id="L6">    ADMINISTRADOR, ORGANIZADOR, MARKETING;</span>
+
+    public Set&lt;String&gt; permissions() {
+<span class="nc bnc" id="L9" title="All 3 branches missed.">        return switch (this) {</span>
+<span class="nc" id="L10">            case ADMINISTRADOR -&gt; Set.of(&quot;dashboard&quot;, &quot;events.read&quot;, &quot;events.manage&quot;, &quot;participants.read&quot;, &quot;operations&quot;, &quot;reports&quot;, &quot;powerbi&quot;, &quot;users.manage&quot;);</span>
+<span class="nc" id="L11">            case ORGANIZADOR -&gt; Set.of(&quot;dashboard&quot;, &quot;events.read&quot;, &quot;participants.read&quot;, &quot;operations&quot;);</span>
+<span class="nc" id="L12">            case MARKETING -&gt; Set.of(&quot;dashboard&quot;, &quot;events.read&quot;, &quot;participants.read&quot;, &quot;reports&quot;, &quot;powerbi&quot;);</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

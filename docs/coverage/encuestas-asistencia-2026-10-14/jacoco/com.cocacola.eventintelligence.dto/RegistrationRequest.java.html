@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RegistrationRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.dto</a> &gt; <span class="el_source">RegistrationRequest.java</span></div><h1>RegistrationRequest.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.dto;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+
+<span class="fc" id="L10">public record RegistrationRequest(</span>
+        @NotNull(message = &quot;El evento es obligatorio&quot;)
+        @Positive(message = &quot;El evento debe ser válido&quot;)
+        Long eventId,
+        @NotBlank(message = &quot;El nombre es obligatorio&quot;)
+        @Size(max = 100)
+        String firstName,
+        @NotBlank(message = &quot;El apellido es obligatorio&quot;)
+        @Size(max = 100)
+        String lastName,
+        @NotBlank(message = &quot;El email es obligatorio&quot;)
+        @Email(message = &quot;El email no es válido&quot;)
+        @Size(max = 255)
+        String email,
+        @Pattern(regexp = &quot;^$|^\\+?[0-9][0-9 ()-]{5,29}$&quot;, message = &quot;El teléfono no es válido&quot;)
+        String phone,
+        @Size(max=100) String city,
+        @Pattern(regexp=&quot;&lt;18|18-24|25-34|35-44|45-54|55\\+&quot;) String ageRange,
+        @Size(max=100) String productPreference,
+        Boolean communicationConsent) {
+    public RegistrationRequest(Long eventId, String firstName, String lastName, String email, String phone) {
+<span class="fc" id="L31">        this(eventId, firstName, lastName, email, phone, null, null, null, false);</span>
+<span class="fc" id="L32">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.security</a> &gt; <span class="el_source">SecurityConfig.java</span></div><h1>SecurityConfig.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.security;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.*;
+import java.util.Map;
+import org.springframework.context.annotation.*;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+
+@Configuration
+<span class="nc" id="L16">public class SecurityConfig {</span>
+<span class="nc" id="L17">    @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }</span>
+    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, AccountStore accounts, ObjectMapper json, RequestThrottle throttle) throws Exception {
+<span class="nc" id="L19">        http.cors(cors -&gt; {}).csrf(csrf -&gt; csrf.csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))</span>
+<span class="nc" id="L20">            .authorizeHttpRequests(auth -&gt; auth</span>
+<span class="nc" id="L21">                .requestMatchers(HttpMethod.GET, &quot;/api/auth/csrf&quot;, &quot;/api/auth/status&quot;, &quot;/api/public/events&quot;, &quot;/api/public/events/*&quot;).permitAll()</span>
+<span class="nc" id="L22">                .requestMatchers(HttpMethod.POST, &quot;/api/auth/login&quot;, &quot;/api/auth/setup&quot;, &quot;/api/auth/activate&quot;, &quot;/api/public/events/*/registrations&quot;).permitAll()</span>
+<span class="nc" id="L23">                .requestMatchers(&quot;/api/auth/me&quot;, &quot;/api/auth/active-role&quot;, &quot;/api/auth/logout&quot;).authenticated()</span>
+<span class="nc" id="L24">                .requestMatchers(&quot;/api/admin/**&quot;).hasRole(&quot;ADMINISTRADOR&quot;)</span>
+<span class="nc" id="L25">                .requestMatchers(&quot;/api/events/*/insights&quot;, &quot;/api/reports/**&quot;, &quot;/api/analytics/campaigns&quot;, &quot;/api/analytics/participants&quot;, &quot;/api/analytics/loyalty&quot;).hasAnyRole(&quot;ADMINISTRADOR&quot;, &quot;MARKETING&quot;)</span>
+<span class="nc" id="L26">                .requestMatchers(HttpMethod.GET, &quot;/api/analytics/**&quot;, &quot;/api/events/**&quot;, &quot;/api/products/**&quot;, &quot;/api/campaigns/**&quot;, &quot;/api/participants/**&quot;, &quot;/api/event-products/**&quot;).hasAnyRole(&quot;ADMINISTRADOR&quot;, &quot;ORGANIZADOR&quot;, &quot;MARKETING&quot;)</span>
+<span class="nc" id="L27">                .requestMatchers(&quot;/api/activities/**&quot;, &quot;/api/surveys/**&quot;, &quot;/api/interactions/**&quot;, &quot;/api/product-interactions/**&quot;, &quot;/api/conversions/**&quot;, &quot;/api/registrations&quot;, &quot;/api/attendances/**&quot;).hasAnyRole(&quot;ADMINISTRADOR&quot;, &quot;ORGANIZADOR&quot;)</span>
+<span class="nc" id="L28">                .requestMatchers(&quot;/api/events/**&quot;, &quot;/api/products/**&quot;, &quot;/api/campaigns/**&quot;, &quot;/api/participants/**&quot;, &quot;/api/event-products/**&quot;).hasRole(&quot;ADMINISTRADOR&quot;)</span>
+<span class="nc" id="L29">                .anyRequest().denyAll())</span>
+<span class="nc" id="L30">            .formLogin(form -&gt; form.loginProcessingUrl(&quot;/api/auth/login&quot;).usernameParameter(&quot;email&quot;)</span>
+<span class="nc" id="L31">                .successHandler((request, response, authentication) -&gt; {</span>
+<span class="nc" id="L32">                    Account account = (Account) authentication.getPrincipal();</span>
+<span class="nc" id="L33">                    accounts.audit(account.id(), &quot;LOGIN&quot;, account.id());</span>
+<span class="nc" id="L34">                    response.setContentType(&quot;application/json&quot;);</span>
+<span class="nc" id="L35">                    response.getWriter().write(&quot;{\&quot;authenticated\&quot;:true}&quot;);</span>
+<span class="nc" id="L36">                })</span>
+<span class="nc" id="L37">                .failureHandler((request, response, error) -&gt; writeError(json, response, 401, &quot;Correo o contraseña incorrectos.&quot;)))</span>
+<span class="nc" id="L38">            .logout(logout -&gt; logout.logoutUrl(&quot;/api/auth/logout&quot;).deleteCookies(&quot;JSESSIONID&quot;)</span>
+<span class="nc" id="L39">                .logoutSuccessHandler((request, response, authentication) -&gt; response.setStatus(204)))</span>
+<span class="nc" id="L40">            .exceptionHandling(errors -&gt; errors</span>
+<span class="nc" id="L41">                .authenticationEntryPoint((request, response, error) -&gt; writeError(json, response, 401, &quot;Inicia sesión para continuar.&quot;))</span>
+<span class="nc" id="L42">                .accessDeniedHandler((request, response, error) -&gt; writeError(json, response, 403, &quot;No tienes permiso para esta operación.&quot;)))</span>
+<span class="nc" id="L43">            .addFilterBefore(new org.springframework.web.filter.OncePerRequestFilter() {</span>
+                @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, jakarta.servlet.FilterChain chain) throws java.io.IOException, jakarta.servlet.ServletException {
+<span class="nc bnc" id="L45" title="All 4 branches missed.">                    if (request.getServletPath().equals(&quot;/api/auth/login&quot;) &amp;&amp; request.getMethod().equals(&quot;POST&quot;)) {</span>
+<span class="nc" id="L46">                        try { throttle.check(&quot;login:&quot; + request.getRemoteAddr(), 30); }</span>
+<span class="nc" id="L47">                        catch (org.springframework.web.server.ResponseStatusException ex) { writeError(json, response, 429, &quot;Demasiados intentos. Intenta nuevamente en unos minutos.&quot;); return; }</span>
+                    }
+<span class="nc" id="L49">                    chain.doFilter(request, response);</span>
+<span class="nc" id="L50">                }</span>
+            }, UsernamePasswordAuthenticationFilter.class)
+<span class="nc" id="L52">            .addFilterAfter(new SessionAccountFilter(accounts), UsernamePasswordAuthenticationFilter.class);</span>
+<span class="nc" id="L53">        return http.build();</span>
+    }
+    private static void writeError(ObjectMapper json, HttpServletResponse response, int status, String message) throws java.io.IOException {
+<span class="nc" id="L56">        response.setStatus(status); response.setContentType(&quot;application/json&quot;);</span>
+<span class="nc" id="L57">        json.writeValue(response.getWriter(), Map.of(&quot;status&quot;, status, &quot;message&quot;, message));</span>
+<span class="nc" id="L58">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
