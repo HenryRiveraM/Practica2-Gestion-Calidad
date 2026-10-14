@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SurveyService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">SurveyService.java</span></div><h1>SurveyService.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import com.cocacola.eventintelligence.dto.SurveyRequest;
+import com.cocacola.eventintelligence.entity.Event;
+import com.cocacola.eventintelligence.entity.Participant;
+import com.cocacola.eventintelligence.entity.Survey;
+import com.cocacola.eventintelligence.exception.DuplicateSurveyException;
+import com.cocacola.eventintelligence.exception.ResourceNotFoundException;
+import com.cocacola.eventintelligence.repository.EventRepository;
+import com.cocacola.eventintelligence.repository.ParticipantRepository;
+import com.cocacola.eventintelligence.repository.SurveyRepository;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class SurveyService extends AbstractCrudService&lt;Survey&gt; {
+    private final AttendeeGuard attendeeGuard;
+    private final SurveyRepository surveyRepository;
+    private final EventRepository eventRepository;
+    private final ParticipantRepository participantRepository;
+
+    public SurveyService(
+            SurveyRepository repository,
+            AttendeeGuard attendeeGuard,
+            EventRepository eventRepository,
+            ParticipantRepository participantRepository) {
+<span class="nc" id="L28">        super(repository, &quot;Encuesta&quot;);</span>
+<span class="nc" id="L29">        this.attendeeGuard = attendeeGuard;</span>
+<span class="nc" id="L30">        this.surveyRepository = repository;</span>
+<span class="nc" id="L31">        this.eventRepository = eventRepository;</span>
+<span class="nc" id="L32">        this.participantRepository = participantRepository;</span>
+<span class="nc" id="L33">    }</span>
+
+    @Transactional
+    public Survey submit(SurveyRequest request) {
+<span class="nc" id="L37">        Event event = eventRepository.findById(request.eventId())</span>
+<span class="nc" id="L38">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Evento&quot;, request.eventId()));</span>
+<span class="nc" id="L39">        Participant participant = participantRepository.findById(request.participantId())</span>
+<span class="nc" id="L40">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Participante&quot;, request.participantId()));</span>
+
+<span class="nc bnc" id="L42" title="All 2 branches missed.">        if (surveyRepository.existsByEventIdAndParticipantId(event.getId(), participant.getId())) {</span>
+<span class="nc" id="L43">            throw new DuplicateSurveyException(event.getId(), participant.getId());</span>
+        }
+
+<span class="nc" id="L46">        attendeeGuard.requireCheckedIn(event.getId(), participant.getId());</span>
+
+<span class="nc" id="L48">        Survey survey = new Survey();</span>
+<span class="nc" id="L49">        survey.setEventId(event.getId());</span>
+<span class="nc" id="L50">        survey.setParticipantId(participant.getId());</span>
+<span class="nc" id="L51">        survey.setOrganizationScore(request.rating());</span>
+<span class="nc" id="L52">        survey.setServiceScore(request.rating());</span>
+<span class="nc" id="L53">        survey.setExperienceScore(request.rating());</span>
+<span class="nc" id="L54">        survey.setProductScore(request.rating());</span>
+<span class="nc" id="L55">        survey.setOverallSatisfaction(request.rating());</span>
+<span class="nc" id="L56">        survey.setNpsScore(request.nps());</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        survey.setComment(request.comment() == null ? null : request.comment().trim());</span>
+
+        try {
+<span class="nc" id="L60">            return surveyRepository.saveAndFlush(survey);</span>
+<span class="nc" id="L61">        } catch (DataIntegrityViolationException exception) {</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">            if (isDuplicateSurveyConstraint(exception)) {</span>
+<span class="nc" id="L63">                throw new DuplicateSurveyException(event.getId(), participant.getId());</span>
+            }
+<span class="nc" id="L65">            throw exception;</span>
+        }
+    }
+
+    @Override
+    protected void validate(Survey entity) {
+<span class="nc" id="L71">        attendeeGuard.requireCheckedIn(entity.getEventId(), entity.getParticipantId());</span>
+<span class="nc" id="L72">    }</span>
+
+    private boolean isDuplicateSurveyConstraint(Throwable exception) {
+<span class="nc" id="L75">        Throwable cause = exception;</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">        while (cause != null) {</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">            if (cause instanceof org.hibernate.exception.ConstraintViolationException violation</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">                    &amp;&amp; &quot;uk_surveys_event_participant&quot;.equals(violation.getConstraintName())) {</span>
+<span class="nc" id="L79">                return true;</span>
+            }
+<span class="nc" id="L81">            cause = cause.getCause();</span>
+        }
+<span class="nc" id="L83">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

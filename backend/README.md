@@ -1,5 +1,8 @@
 # Coca-Cola Event Intelligence API
 
+Para ejecutar las pruebas y generar el reporte de cobertura JaCoCo, consulta
+[Pruebas y cobertura](TESTING.md).
+
 API REST para gestionar campañas, eventos, participantes, productos, actividades, asistencias y analítica de KPIs para una demo de hackathon.
 
 ## Requisitos

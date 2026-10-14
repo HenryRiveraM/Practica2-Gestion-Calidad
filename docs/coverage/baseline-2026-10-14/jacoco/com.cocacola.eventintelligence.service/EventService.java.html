@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">EventService.java</span></div><h1>EventService.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import com.cocacola.eventintelligence.entity.Event;
+import com.cocacola.eventintelligence.repository.EventRepository;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class EventService extends AbstractCrudService&lt;Event&gt; {
+    private final EventRepository events;
+    private final JdbcTemplate jdbc;
+
+    public EventService(EventRepository repository, JdbcTemplate jdbc) {
+<span class="nc" id="L16">        super(repository, &quot;Evento&quot;);</span>
+<span class="nc" id="L17">        this.events = repository;</span>
+<span class="nc" id="L18">        this.jdbc = jdbc;</span>
+<span class="nc" id="L19">    }</span>
+
+    @Override
+    @Transactional
+    public Event create(Event event) {
+<span class="nc" id="L24">        Event saved = super.create(event);</span>
+<span class="nc" id="L25">        events.flush();</span>
+<span class="nc" id="L26">        synchronizePublication(saved, null);</span>
+<span class="nc" id="L27">        return saved;</span>
+    }
+
+    @Override
+    @Transactional
+    public Event update(Long id, Event event) {
+        // Serialize status and publication changes for the same event.
+<span class="nc" id="L34">        jdbc.queryForList(&quot;SELECT id FROM events WHERE id=? FOR UPDATE&quot;, id);</span>
+<span class="nc" id="L35">        String previousStatus = findById(id).getStatus();</span>
+<span class="nc" id="L36">        Event saved = super.update(id, event);</span>
+<span class="nc" id="L37">        events.flush();</span>
+<span class="nc" id="L38">        synchronizePublication(saved, previousStatus);</span>
+<span class="nc" id="L39">        return saved;</span>
+    }
+
+    private void synchronizePublication(Event event, String previousStatus) {
+<span class="nc bnc" id="L43" title="All 4 branches missed.">        if (&quot;ACTIVE&quot;.equals(event.getStatus()) &amp;&amp; !&quot;ACTIVE&quot;.equals(previousStatus)) {</span>
+<span class="nc" id="L44">            jdbc.update(&quot;&quot;&quot;</span>
+                INSERT INTO event_public_access(event_id,token,enabled) VALUES (?,?,TRUE)
+                ON CONFLICT(event_id) DO UPDATE SET enabled=TRUE
+<span class="nc" id="L47">                &quot;&quot;&quot;, event.getId(), UUID.randomUUID().toString());</span>
+<span class="nc bnc" id="L48" title="All 4 branches missed.">        } else if (&quot;COMPLETED&quot;.equals(event.getStatus()) || &quot;CANCELLED&quot;.equals(event.getStatus())) {</span>
+<span class="nc" id="L49">            jdbc.update(&quot;UPDATE event_public_access SET enabled=FALSE WHERE event_id=?&quot;, event.getId());</span>
+        }
+<span class="nc" id="L51">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

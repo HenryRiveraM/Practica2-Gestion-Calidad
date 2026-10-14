@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuthController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.controller</a> &gt; <span class="el_source">AuthController.java</span></div><h1>AuthController.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.controller;
+
+import com.cocacola.eventintelligence.security.*;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.*;
+import java.util.Map;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping(&quot;/api/auth&quot;)
+public class AuthController {
+    private final AccountStore accounts;
+    private final AccountManagement management;
+    private final AccessPolicy access;
+    private final RequestThrottle throttle;
+<span class="nc" id="L19">    public AuthController(AccountStore accounts, AccountManagement management, AccessPolicy access, RequestThrottle throttle) {</span>
+<span class="nc" id="L20">        this.accounts=accounts; this.management=management; this.access=access; this.throttle=throttle;</span>
+<span class="nc" id="L21">    }</span>
+<span class="nc" id="L22">    public record Setup(@NotBlank @Size(max=64) String code, @NotBlank @Size(max=120) String name,</span>
+                        @NotBlank @Email @Size(max=255) String email, @NotBlank @Size(min=12,max=72) String password) {}
+<span class="nc" id="L24">    public record Activation(@NotBlank @Size(max=64) String token, @NotBlank @Size(min=12,max=72) String password) {}</span>
+<span class="nc" id="L25">    public record SwitchRole(@NotNull Role role) {}</span>
+<span class="nc" id="L26">    @GetMapping(&quot;/csrf&quot;) public Map&lt;String,String&gt; csrf(CsrfToken token) { return Map.of(&quot;token&quot;,token.getToken(),&quot;headerName&quot;,token.getHeaderName()); }</span>
+<span class="nc" id="L27">    @GetMapping(&quot;/status&quot;) public Map&lt;String,Boolean&gt; status() { return Map.of(&quot;setupRequired&quot;,accounts.isEmpty()); }</span>
+<span class="nc" id="L28">    @GetMapping(&quot;/me&quot;) public Map&lt;String,Object&gt; me() { return management.view(access.account(),access.role()); }</span>
+    @PostMapping(&quot;/setup&quot;) public Map&lt;String,Boolean&gt; setup(@Valid @RequestBody Setup body, HttpServletRequest request) {
+<span class="nc" id="L30">        throttle.check(&quot;setup:&quot;+request.getRemoteAddr(), 10);</span>
+<span class="nc" id="L31">        management.setup(body.code(),body.name(),body.email(),body.password());</span>
+<span class="nc" id="L32">        return Map.of(&quot;created&quot;, true);</span>
+    }
+    @PostMapping(&quot;/activate&quot;) public Map&lt;String,Boolean&gt; activate(@Valid @RequestBody Activation body, HttpServletRequest request) {
+<span class="nc" id="L35">        throttle.check(&quot;activate:&quot;+request.getRemoteAddr(),20); management.activate(body.token(),body.password()); return Map.of(&quot;activated&quot;,true);</span>
+    }
+    @PostMapping(&quot;/active-role&quot;) public Map&lt;String,Object&gt; switchRole(@Valid @RequestBody SwitchRole body, HttpServletRequest request) {
+<span class="nc bnc" id="L38" title="All 2 branches missed.">        if (!access.account().roles().contains(body.role())) throw new AccessDeniedException(&quot;Esta función no está asignada a tu cuenta.&quot;);</span>
+<span class="nc" id="L39">        request.getSession().setAttribute(SessionAccountFilter.ACTIVE_ROLE, body.role());</span>
+<span class="nc" id="L40">        return management.view(access.account(),body.role());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
