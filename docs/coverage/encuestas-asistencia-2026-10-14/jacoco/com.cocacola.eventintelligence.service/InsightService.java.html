@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InsightService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">InsightService.java</span></div><h1>InsightService.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import com.cocacola.eventintelligence.exception.AiProviderException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.springframework.stereotype.Service;
+
+@Service
+public class InsightService {
+    private final AnalyticsOverviewService analyticsService;
+    private final AiInsightProvider aiInsightProvider;
+
+<span class="fc" id="L14">    public InsightService(AnalyticsOverviewService analyticsService, AiInsightProvider aiInsightProvider) {</span>
+<span class="fc" id="L15">        this.analyticsService = analyticsService;</span>
+<span class="fc" id="L16">        this.aiInsightProvider = aiInsightProvider;</span>
+<span class="fc" id="L17">    }</span>
+
+    public Map&lt;String, Object&gt; getEventInsights(long eventId) {
+<span class="fc" id="L20">        Map&lt;String, Object&gt; analytics = analyticsService.getEventInsightData(eventId);</span>
+<span class="fc" id="L21">        Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L22">        response.put(&quot;eventId&quot;, eventId);</span>
+<span class="fc" id="L23">        response.put(&quot;generatedByAI&quot;, false);</span>
+<span class="fc" id="L24">        response.put(&quot;provider&quot;, aiInsightProvider.providerName());</span>
+<span class="fc" id="L25">        response.put(&quot;model&quot;, aiInsightProvider.modelName());</span>
+
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        if (!aiInsightProvider.isConfigured()) {</span>
+<span class="fc" id="L28">            response.put(&quot;status&quot;, &quot;NOT_CONFIGURED&quot;);</span>
+<span class="fc" id="L29">            response.put(&quot;message&quot;, &quot;La IA no está configurada. Define GEMINI_API_KEY en el entorno del backend.&quot;);</span>
+<span class="fc" id="L30">            response.put(&quot;summary&quot;, null);</span>
+<span class="fc" id="L31">            response.put(&quot;insights&quot;, List.of());</span>
+<span class="fc" id="L32">            response.put(&quot;anomalies&quot;, List.of());</span>
+<span class="fc" id="L33">            response.put(&quot;recommendations&quot;, List.of());</span>
+<span class="fc" id="L34">            return response;</span>
+        }
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (!hasSufficientData(analytics)) {</span>
+<span class="fc" id="L37">            response.put(&quot;status&quot;, &quot;INSUFFICIENT_DATA&quot;);</span>
+<span class="fc" id="L38">            response.put(&quot;message&quot;, &quot;No hay datos suficientes del evento para generar insights.&quot;);</span>
+<span class="fc" id="L39">            response.put(&quot;summary&quot;, null);</span>
+<span class="fc" id="L40">            response.put(&quot;insights&quot;, List.of());</span>
+<span class="fc" id="L41">            response.put(&quot;anomalies&quot;, List.of());</span>
+<span class="fc" id="L42">            response.put(&quot;recommendations&quot;, List.of());</span>
+<span class="fc" id="L43">            return response;</span>
+        }
+
+        InsightReport report;
+        try {
+<span class="fc" id="L48">            report = aiInsightProvider.generate(analytics);</span>
+<span class="fc" id="L49">        } catch (AiProviderException ex) {</span>
+<span class="fc" id="L50">            throw ex;</span>
+<span class="nc" id="L51">        } catch (RuntimeException ex) {</span>
+<span class="nc" id="L52">            throw new AiProviderException(&quot;No se pudieron generar insights con Gemini.&quot;, ex);</span>
+<span class="fc" id="L53">        }</span>
+
+<span class="fc" id="L55">        response.put(&quot;generatedByAI&quot;, true);</span>
+<span class="fc" id="L56">        response.put(&quot;status&quot;, &quot;GENERATED&quot;);</span>
+<span class="fc" id="L57">        response.put(&quot;summary&quot;, report.summary());</span>
+<span class="fc" id="L58">        response.put(&quot;insights&quot;, report.insights());</span>
+<span class="fc" id="L59">        response.put(&quot;anomalies&quot;, report.anomalies());</span>
+<span class="fc" id="L60">        response.put(&quot;recommendations&quot;, report.recommendations());</span>
+<span class="fc" id="L61">        return response;</span>
+    }
+
+    private static boolean hasSufficientData(Map&lt;String, Object&gt; analytics) {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L66">        Map&lt;String, Object&gt; metrics = (Map&lt;String, Object&gt;) analytics.get(&quot;metrics&quot;);</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (metrics != null) {</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            for (String key : List.of(</span>
+                    &quot;attendance_rate&quot;, &quot;conversion_rate&quot;, &quot;average_rating&quot;, &quot;nps&quot;, &quot;engagement_rate&quot;)) {
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                if (metrics.get(key) != null) {</span>
+<span class="fc" id="L71">                    return true;</span>
+                }
+<span class="fc" id="L73">            }</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            for (String key : List.of(</span>
+                    &quot;registered&quot;, &quot;attendees&quot;, &quot;conversions&quot;, &quot;new_participants&quot;, &quot;recurrent_participants&quot;,
+                    &quot;engaged_participants&quot;)) {
+<span class="fc" id="L77">                Object value = metrics.get(key);</span>
+<span class="pc bpc" id="L78" title="1 of 4 branches missed.">                if (value instanceof Number number &amp;&amp; number.longValue() &gt; 0) {</span>
+<span class="fc" id="L79">                    return true;</span>
+                }
+<span class="fc" id="L81">            }</span>
+<span class="fc" id="L82">            Object peakHours = metrics.get(&quot;peakAttendanceHours&quot;);</span>
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">            if (peakHours instanceof List&lt;?&gt; hours &amp;&amp; !hours.isEmpty()) {</span>
+<span class="nc" id="L84">                return true;</span>
+            }
+        }
+<span class="fc" id="L87">        Object activities = analytics.get(&quot;activities&quot;);</span>
+<span class="pc bpc" id="L88" title="2 of 4 branches missed.">        return activities instanceof List&lt;?&gt; activityRows &amp;&amp; !activityRows.isEmpty();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
