@@ -1,0 +1,40 @@
+# Java / Maven
+backend/target/
+backend/.mvn/
+backend/*.log
+backend/**/*.log
+backend/src/main/resources/application.properties
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.class
+*.jar
+*.war
+*.ear
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Environment files
+.env
+.env.*
+
+# Node / frontend if ever added
+node_modules/
+.pnpm-store/
+dist/
+build/
+
+# Credenciales locales de demostración
+.local-accounts.json
+LOCAL-ACCOUNTS.md
