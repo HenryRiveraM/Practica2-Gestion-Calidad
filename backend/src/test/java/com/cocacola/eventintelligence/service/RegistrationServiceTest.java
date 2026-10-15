@@ -136,8 +136,7 @@ class RegistrationServiceTest {
     // ---------------------------------------------------------------------
     // Tarjeta P2-05: pruebas nuevas P2-05-C01 .. P2-05-C06 (patrón AAA)
     // ---------------------------------------------------------------------
-
-    /** P2-05-C01: normaliza espacios en nombre, apellido y correo al crear participante. */
+    
     @Test
     void shouldTrimNamesAndNormalizeEmailWhenCreatingParticipant() {
         stubExistingEvent();
@@ -195,7 +194,6 @@ class RegistrationServiceTest {
         assertFalse(saved.getConsentAt().isAfter(after));
     }
 
-    /** P2-05-C04: conflicto uq_participants_phone se traduce a BusinessRuleException. */
     @Test
     void shouldTranslatePhoneUniqueConflictToBusinessRuleException() {
         stubExistingEvent();
