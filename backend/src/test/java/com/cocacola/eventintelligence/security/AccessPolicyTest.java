@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.cocacola.eventintelligence.entity.Activity;
 import com.cocacola.eventintelligence.entity.BaseEntity;
+import com.cocacola.eventintelligence.entity.Campaign;
 import com.cocacola.eventintelligence.entity.Event;
 import com.cocacola.eventintelligence.entity.EventProduct;
 import com.cocacola.eventintelligence.entity.Interaction;
@@ -45,6 +46,9 @@ class AccessPolicyTest {
     private static final long PARTICIPANT_ID = 20L;
     private static final long P2_19_ASSIGNED_EVENT_ID = 101L;
     private static final long P2_19_UNASSIGNED_EVENT_ID = 102L;
+    private static final long P2_20_EVENT_ID = 201L;
+    private static final long P2_20_PARTICIPANT_ID = 202L;
+    private static final long P2_20_CAMPAIGN_ID = 203L;
 
     @Mock
     private JdbcTemplate jdbc;
@@ -473,6 +477,118 @@ class AccessPolicyTest {
 
         // Act / Assert
         assertThrows(AccessDeniedException.class, () -> accessPolicy.requireRead(activity));
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-20-C01: organizador lee participante asociado a uno de sus eventos")
+    void organizerCanReadParticipantAssociatedWithAssignedEvent() {
+        // Arrange
+        authenticate(Role.ORGANIZADOR, Set.of(P2_20_EVENT_ID));
+        Participant participant = participantWithConsent(false);
+        participant.setId(P2_20_PARTICIPANT_ID);
+        when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(1L), eq(P2_20_PARTICIPANT_ID),
+                eq(P2_20_PARTICIPANT_ID))).thenReturn(true);
+
+        // Act
+        boolean canRead = accessPolicy.canRead(participant);
+
+        // Assert
+        assertTrue(canRead);
+        verify(jdbc).queryForObject(anyString(), eq(Boolean.class), eq(1L), eq(P2_20_PARTICIPANT_ID),
+                eq(P2_20_PARTICIPANT_ID));
+    }
+
+    @Test
+    @DisplayName("P2-20-C02: organizador no lee participante no asociado a sus eventos")
+    void organizerCannotReadParticipantNotAssociatedWithAssignedEvent() {
+        // Arrange
+        authenticate(Role.ORGANIZADOR, Set.of(P2_20_EVENT_ID));
+        Participant participant = participantWithConsent(false);
+        participant.setId(P2_20_PARTICIPANT_ID);
+        when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(1L), eq(P2_20_PARTICIPANT_ID),
+                eq(P2_20_PARTICIPANT_ID))).thenReturn(false);
+
+        // Act
+        boolean canRead = accessPolicy.canRead(participant);
+
+        // Assert
+        assertFalse(canRead);
+        verify(jdbc).queryForObject(anyString(), eq(Boolean.class), eq(1L), eq(P2_20_PARTICIPANT_ID),
+                eq(P2_20_PARTICIPANT_ID));
+    }
+
+    @Test
+    @DisplayName("P2-20-C03: organizador lee campaÃ±a asociada a uno de sus eventos")
+    void organizerCanReadCampaignAssociatedWithAssignedEvent() {
+        // Arrange
+        authenticate(Role.ORGANIZADOR, Set.of(P2_20_EVENT_ID));
+        Campaign campaign = new Campaign();
+        campaign.setId(P2_20_CAMPAIGN_ID);
+        when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(1L), eq(P2_20_CAMPAIGN_ID)))
+                .thenReturn(true);
+
+        // Act
+        boolean canRead = accessPolicy.canRead(campaign);
+
+        // Assert
+        assertTrue(canRead);
+        verify(jdbc).queryForObject(anyString(), eq(Boolean.class), eq(1L), eq(P2_20_CAMPAIGN_ID));
+    }
+
+    @Test
+    @DisplayName("P2-20-C04: organizador no lee campaÃ±a no asociada a sus eventos")
+    void organizerCannotReadCampaignNotAssociatedWithAssignedEvent() {
+        // Arrange
+        authenticate(Role.ORGANIZADOR, Set.of(P2_20_EVENT_ID));
+        Campaign campaign = new Campaign();
+        campaign.setId(P2_20_CAMPAIGN_ID);
+        when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(1L), eq(P2_20_CAMPAIGN_ID)))
+                .thenReturn(false);
+
+        // Act
+        boolean canRead = accessPolicy.canRead(campaign);
+
+        // Assert
+        assertFalse(canRead);
+        verify(jdbc).queryForObject(anyString(), eq(Boolean.class), eq(1L), eq(P2_20_CAMPAIGN_ID));
+    }
+
+    @Test
+    @DisplayName("P2-20-C05: permite participante asociado al evento")
+    void requireParticipantAtEventAllowsAssociatedParticipant() {
+        // Arrange
+        when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(P2_20_EVENT_ID), eq(P2_20_PARTICIPANT_ID),
+                eq(P2_20_EVENT_ID), eq(P2_20_PARTICIPANT_ID))).thenReturn(true);
+
+        // Act / Assert
+        assertDoesNotThrow(() -> accessPolicy.requireParticipantAtEvent(P2_20_EVENT_ID, P2_20_PARTICIPANT_ID));
+        verify(jdbc).queryForObject(anyString(), eq(Boolean.class), eq(P2_20_EVENT_ID), eq(P2_20_PARTICIPANT_ID),
+                eq(P2_20_EVENT_ID), eq(P2_20_PARTICIPANT_ID));
+    }
+
+    @Test
+    @DisplayName("P2-20-C06: deniega participante no asociado al evento")
+    void requireParticipantAtEventDeniesUnassociatedParticipant() {
+        // Arrange
+        when(jdbc.queryForObject(anyString(), eq(Boolean.class), eq(P2_20_EVENT_ID), eq(P2_20_PARTICIPANT_ID),
+                eq(P2_20_EVENT_ID), eq(P2_20_PARTICIPANT_ID))).thenReturn(false);
+
+        // Act / Assert
+        assertThrows(AccessDeniedException.class,
+                () -> accessPolicy.requireParticipantAtEvent(P2_20_EVENT_ID, P2_20_PARTICIPANT_ID));
+        verify(jdbc).queryForObject(anyString(), eq(Boolean.class), eq(P2_20_EVENT_ID), eq(P2_20_PARTICIPANT_ID),
+                eq(P2_20_EVENT_ID), eq(P2_20_PARTICIPANT_ID));
+    }
+
+    @Test
+    @DisplayName("P2-20-C07: no consulta cuando el participante es nulo")
+    void requireParticipantAtEventSkipsJdbcWhenParticipantIsNull() {
+        // Arrange
+        Long participantId = null;
+
+        // Act / Assert
+        assertDoesNotThrow(() -> accessPolicy.requireParticipantAtEvent(P2_20_EVENT_ID, participantId));
         verifyNoInteractions(jdbc);
     }
 
