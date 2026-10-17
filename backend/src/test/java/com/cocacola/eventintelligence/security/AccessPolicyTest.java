@@ -4,14 +4,22 @@
 package com.cocacola.eventintelligence.security;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.cocacola.eventintelligence.entity.Activity;
+import com.cocacola.eventintelligence.entity.BaseEntity;
+import com.cocacola.eventintelligence.entity.Event;
+import com.cocacola.eventintelligence.entity.EventProduct;
 import com.cocacola.eventintelligence.entity.Interaction;
+import com.cocacola.eventintelligence.entity.Participant;
+import com.cocacola.eventintelligence.entity.Product;
 import com.cocacola.eventintelligence.entity.Survey;
 import java.util.Collection;
 import java.util.List;
@@ -35,6 +43,8 @@ class AccessPolicyTest {
 
     private static final long EVENT_ID = 10L;
     private static final long PARTICIPANT_ID = 20L;
+    private static final long P2_19_ASSIGNED_EVENT_ID = 101L;
+    private static final long P2_19_UNASSIGNED_EVENT_ID = 102L;
 
     @Mock
     private JdbcTemplate jdbc;
@@ -282,6 +292,190 @@ class AccessPolicyTest {
         verifyNoInteractions(jdbc);
     }
 
+    @Test
+    @DisplayName("P2-19-C01: administrador lee entidades conocidas y no reconocidas")
+    void administratorCanReadRepresentativeAndUnknownEntities() {
+        // Arrange
+        authenticate(Role.ADMINISTRADOR, Set.of());
+        Event event = eventFor(P2_19_ASSIGNED_EVENT_ID);
+        Participant participant = participantWithConsent(false);
+        BaseEntity unknownEntity = new BaseEntity() { };
+
+        // Act
+        boolean canReadEvent = accessPolicy.canRead(event);
+        boolean canReadParticipant = accessPolicy.canRead(participant);
+        boolean canReadUnknownEntity = accessPolicy.canRead(unknownEntity);
+
+        // Assert
+        assertTrue(canReadEvent);
+        assertTrue(canReadParticipant);
+        assertTrue(canReadUnknownEntity);
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C02: organizador puede leer productos")
+    void organizerCanReadProduct() {
+        // Arrange
+        authenticate(Role.ORGANIZADOR, Set.of(P2_19_ASSIGNED_EVENT_ID));
+
+        // Act
+        boolean canRead = accessPolicy.canRead(new Product());
+
+        // Assert
+        assertTrue(canRead);
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C03: marketing puede leer productos")
+    void marketingCanReadProduct() {
+        // Arrange
+        authenticate(Role.MARKETING, Set.of());
+
+        // Act
+        boolean canRead = accessPolicy.canRead(new Product());
+
+        // Assert
+        assertTrue(canRead);
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C04: marketing puede leer participante con consentimiento")
+    void marketingCanReadParticipantWithConsent() {
+        // Arrange
+        authenticate(Role.MARKETING, Set.of());
+        Participant participant = participantWithConsent(true);
+
+        // Act
+        boolean canRead = accessPolicy.canRead(participant);
+
+        // Assert
+        assertTrue(canRead);
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C05: marketing no puede leer participante sin consentimiento")
+    void marketingCannotReadParticipantWithoutConsent() {
+        // Arrange
+        authenticate(Role.MARKETING, Set.of());
+        Participant participant = participantWithConsent(false);
+
+        // Act
+        boolean canRead = accessPolicy.canRead(participant);
+
+        // Assert
+        assertFalse(canRead);
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C06: marketing no puede leer participante con consentimiento nulo")
+    void marketingCannotReadParticipantWithNullConsent() {
+        // Arrange
+        authenticate(Role.MARKETING, Set.of());
+        Participant participant = participantWithConsent(null);
+
+        // Act
+        boolean canRead = accessPolicy.canRead(participant);
+
+        // Assert
+        assertFalse(canRead);
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C07: marketing puede leer evento y producto del evento")
+    void marketingCanReadEventAndEventProduct() {
+        // Arrange
+        authenticate(Role.MARKETING, Set.of());
+        Event event = eventFor(P2_19_ASSIGNED_EVENT_ID);
+        EventProduct eventProduct = eventProductFor(P2_19_UNASSIGNED_EVENT_ID);
+
+        // Act
+        boolean canReadEvent = accessPolicy.canRead(event);
+        boolean canReadEventProduct = accessPolicy.canRead(eventProduct);
+
+        // Assert
+        assertTrue(canReadEvent);
+        assertTrue(canReadEventProduct);
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C08: marketing no puede leer encuesta ni actividad")
+    void marketingCannotReadSurveyOrActivity() {
+        // Arrange
+        authenticate(Role.MARKETING, Set.of());
+        Survey survey = surveyFor(P2_19_ASSIGNED_EVENT_ID, PARTICIPANT_ID);
+        Activity activity = activityFor(P2_19_UNASSIGNED_EVENT_ID);
+
+        // Act
+        boolean canReadSurvey = accessPolicy.canRead(survey);
+        boolean canReadActivity = accessPolicy.canRead(activity);
+
+        // Assert
+        assertFalse(canReadSurvey);
+        assertFalse(canReadActivity);
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C09: organizador puede leer entidad de evento asignado")
+    void organizerCanReadEntityFromAssignedEvent() {
+        // Arrange
+        authenticate(Role.ORGANIZADOR, Set.of(P2_19_ASSIGNED_EVENT_ID));
+        Activity activity = activityFor(P2_19_ASSIGNED_EVENT_ID);
+
+        // Act
+        boolean canRead = accessPolicy.canRead(activity);
+
+        // Assert
+        assertTrue(canRead);
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C10: organizador no puede leer entidad de evento no asignado")
+    void organizerCannotReadEntityFromUnassignedEvent() {
+        // Arrange
+        authenticate(Role.ORGANIZADOR, Set.of(P2_19_ASSIGNED_EVENT_ID));
+        Activity activity = activityFor(P2_19_UNASSIGNED_EVENT_ID);
+
+        // Act
+        boolean canRead = accessPolicy.canRead(activity);
+
+        // Assert
+        assertFalse(canRead);
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C11: requireRead permite una entidad autorizada")
+    void requireReadAllowsAuthorizedEntity() {
+        // Arrange
+        authenticate(Role.ORGANIZADOR, Set.of(P2_19_ASSIGNED_EVENT_ID));
+        Activity activity = activityFor(P2_19_ASSIGNED_EVENT_ID);
+
+        // Act / Assert
+        assertDoesNotThrow(() -> accessPolicy.requireRead(activity));
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    @DisplayName("P2-19-C12: requireRead deniega una entidad no autorizada")
+    void requireReadDeniesUnauthorizedEntity() {
+        // Arrange
+        authenticate(Role.MARKETING, Set.of());
+        Activity activity = activityFor(P2_19_UNASSIGNED_EVENT_ID);
+
+        // Act / Assert
+        assertThrows(AccessDeniedException.class, () -> accessPolicy.requireRead(activity));
+        verifyNoInteractions(jdbc);
+    }
+
     private void authenticate(Role role, Set<Long> eventIds) {
         Account account = account(role, eventIds);
         authenticate(account, account.getAuthorities());
@@ -302,6 +496,30 @@ class AccessPolicyTest {
         survey.setEventId(eventId);
         survey.setParticipantId(participantId);
         return survey;
+    }
+
+    private Event eventFor(long eventId) {
+        Event event = new Event();
+        event.setId(eventId);
+        return event;
+    }
+
+    private EventProduct eventProductFor(long eventId) {
+        EventProduct eventProduct = new EventProduct();
+        eventProduct.setEventId(eventId);
+        return eventProduct;
+    }
+
+    private Participant participantWithConsent(Boolean consent) {
+        Participant participant = new Participant();
+        participant.setCommunicationConsent(consent);
+        return participant;
+    }
+
+    private Activity activityFor(long eventId) {
+        Activity activity = new Activity();
+        activity.setEventId(eventId);
+        return activity;
     }
 }
 
