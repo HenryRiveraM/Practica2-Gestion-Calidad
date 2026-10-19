@@ -2,6 +2,7 @@ package com.cocacola.eventintelligence.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.never;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.cocacola.eventintelligence.exception.AiProviderException;
 import com.cocacola.eventintelligence.exception.ResourceNotFoundException;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -126,6 +128,149 @@ class InsightServiceTest {
         when(aiInsightProvider.generate(analytics)).thenThrow(new AiProviderException("Gemini no respondió."));
 
         assertThrows(AiProviderException.class, () -> service.getEventInsights(12L));
+    }
+
+    // ---- Nuevas pruebas ----
+
+    // Cubre líneas 51-52: catch (RuntimeException) que envuelve el error en AiProviderException
+    @Test
+    void shouldWrapUnexpectedRuntimeErrorFromProviderInAiProviderException() {
+        Map<String, Object> analytics = analyticsData(Map.of("registered", 20L), List.of());
+        IllegalStateException cause = new IllegalStateException("fallo inesperado");
+        when(analyticsService.getEventInsightData(13L)).thenReturn(analytics);
+        stubProviderConfigured();
+        when(aiInsightProvider.generate(analytics)).thenThrow(cause);
+
+        AiProviderException thrown =
+                assertThrows(AiProviderException.class, () -> service.getEventInsights(13L));
+
+        assertSame(cause, thrown.getCause());
+        assertTrue(thrown.getMessage().contains("Gemini"));
+    }
+
+    // Cubre línea 84: return true cuando solo hay horas pico
+    @Test
+    void shouldGenerateInsightsWhenOnlyPeakAttendanceHoursHaveData() {
+        Map<String, Object> metrics = zeroMetrics();
+        metrics.put("peakAttendanceHours", List.of(Map.of("hour", 14, "attendees", 6L)));
+        Map<String, Object> analytics = analyticsData(metrics, List.of());
+        stubSuccessfulGeneration(14L, analytics);
+
+        Map<String, Object> result = service.getEventInsights(14L);
+
+        assertEquals("GENERATED", result.get("status"));
+        assertEquals(true, result.get("generatedByAI"));
+    }
+
+    // Cubre rama de línea 88: activities con datos cuando todas las métricas son cero
+    @Test
+    void shouldGenerateInsightsWhenOnlyActivitiesHaveData() {
+        Map<String, Object> analytics = analyticsData(
+                zeroMetrics(),
+                List.of(Map.of("type", "SAMPLING", "activity_count", 2L)));
+        stubSuccessfulGeneration(15L, analytics);
+
+        Map<String, Object> result = service.getEventInsights(15L);
+
+        assertEquals("GENERATED", result.get("status"));
+    }
+
+    // Cubre rama de línea 67 (metrics == null) y línea 88 con activities
+    @Test
+    void shouldGenerateInsightsWhenMetricsAreMissingButActivitiesExist() {
+        Map<String, Object> analytics = analyticsWithoutMetrics(
+                List.of(Map.of("type", "SAMPLING", "activity_count", 2L)));
+        stubSuccessfulGeneration(16L, analytics);
+
+        Map<String, Object> result = service.getEventInsights(16L);
+
+        assertEquals("GENERATED", result.get("status"));
+    }
+
+    // Cubre rama de línea 67 (metrics == null) sin activities
+    @Test
+    void shouldReportInsufficientDataWhenMetricsAndActivitiesAreMissing() {
+        Map<String, Object> analytics = analyticsWithoutMetrics(List.of());
+        when(analyticsService.getEventInsightData(17L)).thenReturn(analytics);
+        stubProviderConfigured();
+
+        Map<String, Object> result = service.getEventInsights(17L);
+
+        assertEquals("INSUFFICIENT_DATA", result.get("status"));
+        assertFalse((Boolean) result.get("generatedByAI"));
+        verify(aiInsightProvider, never()).generate(org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    // Cubre rama de línea 78: valor no numérico se ignora y se evalúa el siguiente campo
+    @Test
+    void shouldIgnoreNonNumericCountsAndUseNextNumericMetric() {
+        Map<String, Object> metrics = zeroMetrics();
+        metrics.put("registered", "n/a");
+        metrics.put("attendees", 5L);
+        Map<String, Object> analytics = analyticsData(metrics, List.of());
+        stubSuccessfulGeneration(18L, analytics);
+
+        Map<String, Object> result = service.getEventInsights(18L);
+
+        assertEquals("GENERATED", result.get("status"));
+    }
+
+    // Cubre rama de línea 83: peakAttendanceHours no es una lista
+    @Test
+    void shouldReportInsufficientDataWhenPeakHoursIsNotAList() {
+        Map<String, Object> metrics = zeroMetrics();
+        metrics.put("peakAttendanceHours", "sin datos");
+        Map<String, Object> analytics = analyticsData(metrics, List.of());
+        when(analyticsService.getEventInsightData(19L)).thenReturn(analytics);
+        stubProviderConfigured();
+
+        Map<String, Object> result = service.getEventInsights(19L);
+
+        assertEquals("INSUFFICIENT_DATA", result.get("status"));
+        verify(aiInsightProvider, never()).generate(org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    // ---- Helpers ----
+
+    private void stubProviderConfigured() {
+        when(aiInsightProvider.providerName()).thenReturn("gemini");
+        when(aiInsightProvider.modelName()).thenReturn("gemini-3.5-flash-lite");
+        when(aiInsightProvider.isConfigured()).thenReturn(true);
+    }
+
+    private void stubSuccessfulGeneration(long eventId, Map<String, Object> analytics) {
+        InsightReport report = new InsightReport(
+                "Resumen.",
+                List.of("Insight."),
+                List.of(),
+                List.of("Recomendación."));
+        when(analyticsService.getEventInsightData(eventId)).thenReturn(analytics);
+        stubProviderConfigured();
+        when(aiInsightProvider.generate(analytics)).thenReturn(report);
+    }
+
+    private static Map<String, Object> zeroMetrics() {
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put("registered", 0L);
+        metrics.put("attendees", 0L);
+        metrics.put("attendance_rate", null);
+        metrics.put("conversions", 0L);
+        metrics.put("conversion_rate", null);
+        metrics.put("new_participants", 0L);
+        metrics.put("recurrent_participants", 0L);
+        metrics.put("average_rating", null);
+        metrics.put("nps", null);
+        metrics.put("engaged_participants", 0L);
+        metrics.put("engagement_rate", null);
+        return metrics;
+    }
+
+    private static Map<String, Object> analyticsWithoutMetrics(List<Map<String, Object>> activities) {
+        Map<String, Object> analytics = new HashMap<>();
+        analytics.put("event", Map.of("id", 9L, "name", "Evento real", "event_date", "2026-10-03"));
+        analytics.put("metrics", null);
+        analytics.put("activities", activities);
+        return analytics;
     }
 
     private static Map<String, Object> analyticsData(

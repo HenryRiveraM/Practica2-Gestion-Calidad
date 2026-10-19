@@ -1,6 +1,7 @@
 package com.cocacola.eventintelligence.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,6 +14,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -131,6 +133,68 @@ class AnalyticsOverviewServiceTest {
         assertNull(response.get("conversion_rate"));
         assertNull(response.get("nps"));
         assertNull(response.get("average_rating"));
+    }
+
+    // ---- Nuevas pruebas: cubren las líneas 43-45 (scope != null) ----
+
+    @Test
+    void shouldReturnNoDataWhenScopeIsEmpty() {
+        stubOverviewMetrics();
+
+        service.getScopedOverview(null, null, null, null, Set.of());
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<SqlParameterSource> parameters = ArgumentCaptor.forClass(SqlParameterSource.class);
+        verify(jdbcTemplate).queryForMap(sql.capture(), parameters.capture());
+        assertTrue(sql.getValue().contains("AND 1=0"));
+        assertFalse(sql.getValue().contains(":allowedEventIds"));
+        assertFalse(((MapSqlParameterSource) parameters.getValue()).hasValue("allowedEventIds"));
+
+        ArgumentCaptor<String> peakSql = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).queryForList(peakSql.capture(), any(SqlParameterSource.class));
+        assertTrue(peakSql.getValue().contains("AND 1=0"));
+    }
+
+    @Test
+    void shouldRestrictEventsToAllowedScope() {
+        stubOverviewMetrics();
+        Set<Long> scope = Set.of(1L, 2L, 3L);
+
+        Map<String, Object> response = service.getScopedOverview(null, null, null, null, scope);
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<SqlParameterSource> parameters = ArgumentCaptor.forClass(SqlParameterSource.class);
+        verify(jdbcTemplate).queryForMap(sql.capture(), parameters.capture());
+        assertTrue(sql.getValue().contains("AND e.id IN (:allowedEventIds)"));
+        assertFalse(sql.getValue().contains("AND 1=0"));
+        assertEquals(scope, parameters.getValue().getValue("allowedEventIds"));
+
+        ArgumentCaptor<String> peakSql = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<SqlParameterSource> peakParams = ArgumentCaptor.forClass(SqlParameterSource.class);
+        verify(jdbcTemplate).queryForList(peakSql.capture(), peakParams.capture());
+        assertTrue(peakSql.getValue().contains("AND e.id IN (:allowedEventIds)"));
+        assertEquals(scope, peakParams.getValue().getValue("allowedEventIds"));
+
+        assertEquals(12L, response.get("registered"));
+    }
+
+    @Test
+    void shouldCombineScopeWithEventCampaignAndDateFilters() {
+        stubOverviewMetrics();
+        Set<Long> scope = Set.of(4L, 5L);
+
+        service.getScopedOverview(4L, 3L, LocalDate.parse("2026-06-01"), LocalDate.parse("2026-06-30"), scope);
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<SqlParameterSource> parameters = ArgumentCaptor.forClass(SqlParameterSource.class);
+        verify(jdbcTemplate).queryForMap(sql.capture(), parameters.capture());
+        assertTrue(sql.getValue().contains("e.id = :eventId"));
+        assertTrue(sql.getValue().contains("e.event_date >= :startDate"));
+        assertTrue(sql.getValue().contains("e.event_date <= :endDate"));
+        assertTrue(sql.getValue().contains("AND e.id IN (:allowedEventIds)"));
+        assertEquals(4L, parameters.getValue().getValue("eventId"));
+        assertEquals(3L, parameters.getValue().getValue("campaignId"));
+        assertEquals(scope, parameters.getValue().getValue("allowedEventIds"));
     }
 
     private void stubOverviewMetrics() {
