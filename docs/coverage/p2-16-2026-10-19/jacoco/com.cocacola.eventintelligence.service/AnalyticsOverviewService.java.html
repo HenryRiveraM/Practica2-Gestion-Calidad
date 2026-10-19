@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AnalyticsOverviewService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">AnalyticsOverviewService.java</span></div><h1>AnalyticsOverviewService.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import com.cocacola.eventintelligence.exception.ResourceNotFoundException;
+import java.sql.Date;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class AnalyticsOverviewService {
+    private static final String FILTERED_EVENTS = &quot;&quot;&quot;
+            WITH filtered_events AS (
+                SELECT e.id, e.event_date
+                FROM events e
+                WHERE 1 = 1
+            &quot;&quot;&quot;;
+
+    private final NamedParameterJdbcTemplate jdbcTemplate;
+
+<span class="fc" id="L25">    public AnalyticsOverviewService(NamedParameterJdbcTemplate jdbcTemplate) {</span>
+<span class="fc" id="L26">        this.jdbcTemplate = jdbcTemplate;</span>
+<span class="fc" id="L27">    }</span>
+
+    @Transactional(readOnly = true)
+    public Map&lt;String, Object&gt; getOverview(
+            Long eventId,
+            Long campaignId,
+            LocalDate startDate,
+            LocalDate endDate) {
+<span class="fc" id="L35">        return getScopedOverview(eventId, campaignId, startDate, endDate, null);</span>
+    }
+
+    @Transactional(readOnly=true)
+    public Map&lt;String,Object&gt; getScopedOverview(Long eventId, Long campaignId, LocalDate startDate, LocalDate endDate, java.util.Set&lt;Long&gt; scope) {
+<span class="fc" id="L40">        MapSqlParameterSource parameters = new MapSqlParameterSource();</span>
+<span class="fc" id="L41">        StringBuilder eventFilter = new StringBuilder();</span>
+<span class="fc" id="L42">        addFilter(eventFilter, parameters, eventId, campaignId, startDate, endDate);</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">        if (scope != null) {</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">            eventFilter.append(scope.isEmpty() ? &quot; AND 1=0&quot; : &quot; AND e.id IN (:allowedEventIds)&quot;);</span>
+<span class="nc bnc" id="L45" title="All 2 branches missed.">            if (!scope.isEmpty()) parameters.addValue(&quot;allowedEventIds&quot;, scope);</span>
+        }
+
+<span class="fc" id="L48">        String aggregationSql = FILTERED_EVENTS + eventFilter + &quot;&quot;&quot;</span>
+                    ),
+                    scoped_registrations AS (
+                        SELECT r.participant_id, e.id AS event_id, e.event_date
+                        FROM registrations r
+                        JOIN filtered_events e ON e.id = r.event_id
+                        UNION
+                        SELECT a.participant_id, e.id AS event_id, e.event_date
+                        FROM attendances a
+                        JOIN filtered_events e ON e.id = a.event_id
+                        WHERE a.status &lt;&gt; 'CANCELLED'
+                    ),
+                    first_scoped_registration AS (
+                        SELECT participant_id, MIN(event_date) AS first_event_date
+                        FROM scoped_registrations
+                        GROUP BY participant_id
+                    ),
+                    participant_history AS (
+                        SELECT f.participant_id,
+                            EXISTS (
+                                SELECT 1
+                                FROM registrations previous_registration
+                                JOIN events previous_event ON previous_event.id = previous_registration.event_id
+                                WHERE previous_registration.participant_id = f.participant_id
+                                  AND previous_event.event_date &lt; f.first_event_date
+                            ) OR EXISTS (
+                                SELECT 1
+                                FROM attendances previous_attendance
+                                JOIN events previous_event ON previous_event.id = previous_attendance.event_id
+                                WHERE previous_attendance.participant_id = f.participant_id
+                                  AND previous_attendance.status &lt;&gt; 'CANCELLED'
+                                  AND previous_event.event_date &lt; f.first_event_date
+                            ) AS recurrent
+                        FROM first_scoped_registration f
+                    ),
+                    attendance_totals AS (
+                        SELECT COUNT(*) AS attendees
+                        FROM attendances a
+                        JOIN filtered_events e ON e.id = a.event_id
+                        WHERE a.status = 'CHECKED_IN'
+                    ),
+                    registration_totals AS (
+                        SELECT COUNT(*) AS registered FROM scoped_registrations
+                    ),
+                    conversion_totals AS (
+                        SELECT COUNT(*) AS conversions
+                        FROM conversions c
+                        JOIN filtered_events e ON e.id = c.event_id
+                    ),
+                    survey_totals AS (
+                        SELECT COUNT(*) AS survey_count,
+                            ROUND(AVG(s.overall_satisfaction)::numeric, 2) AS average_rating,
+                            CASE WHEN COUNT(*) = 0 THEN NULL
+                                ELSE ROUND(100.0 * (
+                                    COUNT(*) FILTER (WHERE s.nps_score &gt;= 9)
+                                    - COUNT(*) FILTER (WHERE s.nps_score &lt;= 6)
+                                ) / COUNT(*), 1)
+                            END AS nps
+                        FROM surveys s
+                        JOIN filtered_events e ON e.id = s.event_id
+                    )
+                    SELECT r.registered AS registered,
+                        a.attendees AS attendees,
+                        CASE WHEN r.registered = 0 THEN NULL
+                            ELSE ROUND(100.0 * a.attendees / r.registered, 1)
+                        END AS attendance_rate,
+                        c.conversions AS conversions,
+                        CASE WHEN a.attendees = 0 THEN NULL
+                            ELSE ROUND(100.0 * c.conversions / a.attendees, 1)
+                        END AS conversion_rate,
+                        (SELECT COUNT(*) FROM participant_history WHERE recurrent = FALSE) AS new_participants,
+                        (SELECT COUNT(*) FROM participant_history WHERE recurrent = TRUE) AS recurrent_participants,
+                        s.nps AS nps,
+                        s.average_rating AS average_rating
+                    FROM registration_totals r
+                    CROSS JOIN attendance_totals a
+                    CROSS JOIN conversion_totals c
+                    CROSS JOIN survey_totals s
+                &quot;&quot;&quot;;
+
+<span class="fc" id="L128">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;(jdbcTemplate.queryForMap(aggregationSql, parameters));</span>
+<span class="fc" id="L129">        String peakHoursSql = FILTERED_EVENTS + eventFilter + &quot;&quot;&quot;</span>
+                    )
+                    SELECT EXTRACT(HOUR FROM a.check_in_at AT TIME ZONE 'America/La_Paz')::integer AS hour,
+                        COUNT(*) AS attendees
+                    FROM attendances a
+                    JOIN filtered_events e ON e.id = a.event_id
+                    WHERE a.status = 'CHECKED_IN'
+                      AND a.check_in_at IS NOT NULL
+                    GROUP BY hour
+                    ORDER BY attendees DESC, hour
+                &quot;&quot;&quot;;
+<span class="fc" id="L140">        List&lt;Map&lt;String, Object&gt;&gt; peakHours = jdbcTemplate.queryForList(peakHoursSql, parameters);</span>
+
+<span class="fc" id="L142">        result.put(&quot;peakAttendanceHours&quot;, peakHours.stream()</span>
+<span class="fc" id="L143">                .map(row -&gt; Map.of(</span>
+<span class="fc" id="L144">                        &quot;hour&quot;, ((Number) row.get(&quot;hour&quot;)).intValue(),</span>
+<span class="fc" id="L145">                        &quot;attendees&quot;, ((Number) row.get(&quot;attendees&quot;)).longValue()))</span>
+<span class="fc" id="L146">                .toList());</span>
+<span class="fc" id="L147">        return result;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public Map&lt;String, Object&gt; getEventInsightData(long eventId) {
+<span class="fc" id="L152">        MapSqlParameterSource parameters = new MapSqlParameterSource(&quot;eventId&quot;, eventId);</span>
+<span class="fc" id="L153">        List&lt;Map&lt;String, Object&gt;&gt; events = jdbcTemplate.queryForList(&quot;&quot;&quot;</span>
+                SELECT e.id, e.name, e.event_date, e.location, c.name AS campaign_name
+                FROM events e
+                LEFT JOIN campaigns c ON c.id = e.campaign_id
+                WHERE e.id = :eventId
+                &quot;&quot;&quot;, parameters);
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (events.isEmpty()) {</span>
+<span class="fc" id="L160">            throw new ResourceNotFoundException(&quot;Evento&quot;, eventId);</span>
+        }
+
+<span class="fc" id="L163">        Map&lt;String, Object&gt; metrics = new LinkedHashMap&lt;&gt;(getOverview(eventId, null, null, null));</span>
+<span class="fc" id="L164">        Map&lt;String, Object&gt; engagement = jdbcTemplate.queryForMap(&quot;&quot;&quot;</span>
+                SELECT COUNT(DISTINCT engaged.participant_id) AS engaged_participants,
+                    CASE WHEN attendance.attendees = 0 THEN NULL
+                        ELSE ROUND(100.0 * COUNT(DISTINCT engaged.participant_id) / attendance.attendees, 1)
+                    END AS engagement_rate
+                FROM events e
+                LEFT JOIN (
+                    SELECT i.event_id, i.participant_id
+                    FROM interactions i
+                    WHERE i.event_id = :eventId
+                    UNION
+                    SELECT pi.event_id, pi.participant_id
+                    FROM product_interactions pi
+                    WHERE pi.event_id = :eventId
+                ) engaged ON engaged.event_id = e.id
+                CROSS JOIN (
+                    SELECT COUNT(DISTINCT a.participant_id) AS attendees
+                    FROM attendances a
+                    WHERE a.event_id = :eventId AND a.status = 'CHECKED_IN'
+                ) attendance
+                WHERE e.id = :eventId
+                GROUP BY attendance.attendees
+                &quot;&quot;&quot;, parameters);
+<span class="fc" id="L187">        metrics.putAll(engagement);</span>
+
+<span class="fc" id="L189">        List&lt;Map&lt;String, Object&gt;&gt; activities = jdbcTemplate.queryForList(&quot;&quot;&quot;</span>
+                SELECT a.type, COUNT(*) AS activity_count,
+                    SUM(a.quantity) AS total_quantity,
+                    COUNT(DISTINCT a.participant_id) AS participants
+                FROM activities a
+                WHERE a.event_id = :eventId
+                GROUP BY a.type
+                ORDER BY activity_count DESC, a.type
+                &quot;&quot;&quot;, parameters);
+
+<span class="fc" id="L199">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L200">        result.put(&quot;event&quot;, events.getFirst());</span>
+<span class="fc" id="L201">        result.put(&quot;metrics&quot;, metrics);</span>
+<span class="fc" id="L202">        result.put(&quot;activities&quot;, activities);</span>
+<span class="fc" id="L203">        return result;</span>
+    }
+
+    private void addFilter(
+            StringBuilder sql,
+            MapSqlParameterSource parameters,
+            Long eventId,
+            Long campaignId,
+            LocalDate startDate,
+            LocalDate endDate) {
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (eventId != null) {</span>
+<span class="fc" id="L214">            sql.append(&quot; AND e.id = :eventId&quot;);</span>
+<span class="fc" id="L215">            parameters.addValue(&quot;eventId&quot;, eventId);</span>
+        }
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (campaignId != null) {</span>
+<span class="fc" id="L218">            sql.append(&quot; AND e.campaign_id = :campaignId&quot;);</span>
+<span class="fc" id="L219">            parameters.addValue(&quot;campaignId&quot;, campaignId);</span>
+        }
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if (startDate != null) {</span>
+<span class="fc" id="L222">            sql.append(&quot; AND e.event_date &gt;= :startDate&quot;);</span>
+<span class="fc" id="L223">            parameters.addValue(&quot;startDate&quot;, Date.valueOf(startDate));</span>
+        }
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        if (endDate != null) {</span>
+<span class="fc" id="L226">            sql.append(&quot; AND e.event_date &lt;= :endDate&quot;);</span>
+<span class="fc" id="L227">            parameters.addValue(&quot;endDate&quot;, Date.valueOf(endDate));</span>
+        }
+<span class="fc" id="L229">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AccountManagement.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.security</a> &gt; <span class="el_source">AccountManagement.java</span></div><h1>AccountManagement.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.security;
+
+import com.cocacola.eventintelligence.exception.BusinessRuleException;
+import com.cocacola.eventintelligence.exception.ResourceNotFoundException;
+import java.nio.charset.StandardCharsets;
+import java.security.*;
+import java.util.*;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class AccountManagement implements ApplicationRunner {
+    private final JdbcTemplate jdbc;
+    private final AccountStore accounts;
+    private final PasswordEncoder passwords;
+<span class="nc" id="L20">    private final String setupToken = token();</span>
+<span class="nc" id="L21">    public AccountManagement(JdbcTemplate jdbc, AccountStore accounts, PasswordEncoder passwords) {</span>
+<span class="nc" id="L22">        this.jdbc = jdbc; this.accounts = accounts; this.passwords = passwords;</span>
+<span class="nc" id="L23">    }</span>
+    @Override public void run(ApplicationArguments args) {
+<span class="nc bnc" id="L25" title="All 2 branches missed.">        if (accounts.isEmpty()) org.slf4j.LoggerFactory.getLogger(getClass()).warn(</span>
+                &quot;Configuración inicial pendiente. Abre /login y usa este código temporal de administrador: {}&quot;, setupToken);
+<span class="nc" id="L27">    }</span>
+    public Map&lt;String, Object&gt; view(Account account, Role activeRole) {
+<span class="nc" id="L29">        return Map.of(&quot;id&quot;, account.id(), &quot;name&quot;, account.name(), &quot;email&quot;, account.email(), &quot;roles&quot;, account.roles(),</span>
+<span class="nc" id="L30">                &quot;activeRole&quot;, activeRole, &quot;permissions&quot;, activeRole.permissions(), &quot;eventIds&quot;, account.eventIds());</span>
+    }
+    public Map&lt;String, Object&gt; adminView(Account account) {
+<span class="nc" id="L33">        return Map.of(&quot;id&quot;, account.id(), &quot;name&quot;, account.name(), &quot;email&quot;, account.email(), &quot;roles&quot;, account.roles(),</span>
+<span class="nc bnc" id="L34" title="All 2 branches missed.">                &quot;enabled&quot;, account.enabled(), &quot;activated&quot;, account.passwordHash() != null, &quot;eventIds&quot;, account.eventIds());</span>
+    }
+    public List&lt;Map&lt;String, Object&gt;&gt; list() {
+<span class="nc" id="L37">        return jdbc.queryForList(&quot;SELECT id FROM app_users ORDER BY id&quot;, Long.class).stream()</span>
+<span class="nc" id="L38">                .map(id -&gt; adminView(accounts.find(id).orElseThrow())).toList();</span>
+    }
+    @Transactional public void setup(String code, String name, String email, String password) {
+<span class="nc" id="L41">        lock();</span>
+<span class="nc bnc" id="L42" title="All 4 branches missed.">        if (!accounts.isEmpty() || !MessageDigest.isEqual(setupToken.getBytes(StandardCharsets.UTF_8), code.getBytes(StandardCharsets.UTF_8)))</span>
+<span class="nc" id="L43">            throw new BusinessRuleException(&quot;El código de configuración no es válido o ya fue utilizado.&quot;);</span>
+<span class="nc" id="L44">        validatePassword(password);</span>
+<span class="nc" id="L45">        Long id = jdbc.queryForObject(&quot;INSERT INTO app_users(name,email,password_hash) VALUES (?,?,?) RETURNING id&quot;, Long.class,</span>
+<span class="nc" id="L46">                name.trim(), email.trim().toLowerCase(Locale.ROOT), passwords.encode(password));</span>
+<span class="nc" id="L47">        jdbc.update(&quot;INSERT INTO app_user_roles(user_id,role) VALUES (?, 'ADMINISTRADOR')&quot;, id);</span>
+<span class="nc" id="L48">        accounts.audit(id, &quot;INITIAL_ADMIN_CREATED&quot;, id);</span>
+<span class="nc" id="L49">    }</span>
+    @Transactional public Map&lt;String, Object&gt; create(Long actor, String name, String email, Set&lt;Role&gt; roles, Set&lt;Long&gt; events) {
+<span class="nc" id="L51">        lock();</span>
+<span class="nc" id="L52">        validateRoles(roles);</span>
+<span class="nc" id="L53">        Long id = jdbc.queryForObject(&quot;INSERT INTO app_users(name,email) VALUES (?,?) RETURNING id&quot;, Long.class, name.trim(), email.trim().toLowerCase(Locale.ROOT));</span>
+<span class="nc" id="L54">        saveAssignments(id, roles, events);</span>
+<span class="nc" id="L55">        accounts.audit(actor, &quot;USER_CREATED&quot;, id);</span>
+<span class="nc" id="L56">        return Map.of(&quot;user&quot;, adminView(accounts.find(id).orElseThrow()), &quot;activationToken&quot;, issueToken(id));</span>
+    }
+    @Transactional public Map&lt;String, Object&gt; update(Long actor, Long id, String name, boolean enabled, Set&lt;Role&gt; roles, Set&lt;Long&gt; events) {
+<span class="nc" id="L59">        lock();</span>
+<span class="nc" id="L60">        validateRoles(roles);</span>
+<span class="nc" id="L61">        Account existing = accounts.find(id).orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Usuario&quot;, id));</span>
+<span class="nc bnc" id="L62" title="All 8 branches missed.">        if (existing.roles().contains(Role.ADMINISTRADOR) &amp;&amp; existing.enabled() &amp;&amp; (!enabled || !roles.contains(Role.ADMINISTRADOR))) {</span>
+<span class="nc" id="L63">            Long administrators = jdbc.queryForObject(&quot;SELECT COUNT(*) FROM app_users u JOIN app_user_roles r ON u.id=r.user_id WHERE u.enabled=TRUE AND u.password_hash IS NOT NULL AND r.role='ADMINISTRADOR'&quot;, Long.class);</span>
+<span class="nc bnc" id="L64" title="All 4 branches missed.">            if (administrators &lt;= 1 || actor.equals(id)) throw new BusinessRuleException(&quot;Conserva al menos otro administrador activo antes de retirar este acceso.&quot;);</span>
+        }
+<span class="nc" id="L66">        jdbc.update(&quot;UPDATE app_users SET name=?, enabled=?, auth_version=auth_version+1 WHERE id=?&quot;, name.trim(), enabled, id);</span>
+<span class="nc" id="L67">        saveAssignments(id, roles, events);</span>
+<span class="nc" id="L68">        accounts.audit(actor, &quot;USER_ACCESS_UPDATED&quot;, id);</span>
+<span class="nc" id="L69">        return adminView(accounts.find(id).orElseThrow());</span>
+    }
+    @Transactional public String invite(Long actor, Long id) {
+<span class="nc" id="L72">        lock();</span>
+<span class="nc" id="L73">        Account account = accounts.find(id).orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Usuario&quot;, id));</span>
+<span class="nc bnc" id="L74" title="All 4 branches missed.">        if (account.passwordHash() != null || !account.enabled()) throw new BusinessRuleException(&quot;Solo se pueden activar cuentas pendientes y habilitadas.&quot;);</span>
+<span class="nc" id="L75">        accounts.audit(actor, &quot;ACTIVATION_LINK_CREATED&quot;, id);</span>
+<span class="nc" id="L76">        return issueToken(id);</span>
+    }
+    @Transactional public void activate(String code, String password) {
+<span class="nc" id="L79">        lock();</span>
+<span class="nc" id="L80">        validatePassword(password);</span>
+<span class="nc" id="L81">        var ids = jdbc.queryForList(&quot;SELECT user_id FROM app_activation_tokens WHERE token_hash=? AND used_at IS NULL AND expires_at&gt;CURRENT_TIMESTAMP FOR UPDATE&quot;, Long.class, hash(code));</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        if (ids.isEmpty()) throw new BusinessRuleException(&quot;El enlace no es válido, venció o ya fue utilizado. Solicita uno nuevo al administrador.&quot;);</span>
+<span class="nc" id="L83">        Long id = ids.getFirst();</span>
+<span class="nc" id="L84">        lock();</span>
+<span class="nc" id="L85">        Account account = accounts.find(id).orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Usuario&quot;, id));</span>
+<span class="nc bnc" id="L86" title="All 4 branches missed.">        if (!account.enabled() || account.passwordHash() != null) throw new BusinessRuleException(&quot;La cuenta no está disponible para activación.&quot;);</span>
+<span class="nc" id="L87">        jdbc.update(&quot;UPDATE app_users SET password_hash=?, auth_version=auth_version+1 WHERE id=?&quot;, passwords.encode(password), id);</span>
+<span class="nc" id="L88">        jdbc.update(&quot;UPDATE app_activation_tokens SET used_at=CURRENT_TIMESTAMP WHERE user_id=? AND used_at IS NULL&quot;, id);</span>
+<span class="nc" id="L89">        accounts.audit(id, &quot;ACCOUNT_ACTIVATED&quot;, id);</span>
+<span class="nc" id="L90">    }</span>
+    private void saveAssignments(Long id, Set&lt;Role&gt; roles, Set&lt;Long&gt; events) {
+<span class="nc" id="L92">        jdbc.update(&quot;DELETE FROM app_user_roles WHERE user_id=?&quot;, id);</span>
+<span class="nc" id="L93">        roles.forEach(role -&gt; jdbc.update(&quot;INSERT INTO app_user_roles(user_id,role) VALUES (?,?)&quot;, id, role.name()));</span>
+<span class="nc" id="L94">        jdbc.update(&quot;DELETE FROM app_user_events WHERE user_id=?&quot;, id);</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (roles.contains(Role.ORGANIZADOR)) events.forEach(event -&gt; jdbc.update(&quot;INSERT INTO app_user_events(user_id,event_id) VALUES (?,?)&quot;, id, event));</span>
+<span class="nc" id="L96">    }</span>
+    private String issueToken(Long id) {
+<span class="nc" id="L98">        jdbc.update(&quot;UPDATE app_activation_tokens SET used_at=CURRENT_TIMESTAMP WHERE user_id=? AND used_at IS NULL&quot;, id);</span>
+<span class="nc" id="L99">        String raw = token();</span>
+<span class="nc" id="L100">        jdbc.update(&quot;INSERT INTO app_activation_tokens(token_hash,user_id,expires_at) VALUES (?,?,CURRENT_TIMESTAMP + INTERVAL '24 hours')&quot;, hash(raw), id);</span>
+<span class="nc" id="L101">        return raw;</span>
+    }
+<span class="nc" id="L103">    private void lock() { jdbc.execute(&quot;SELECT pg_advisory_xact_lock(49170421)&quot;); }</span>
+<span class="nc bnc" id="L104" title="All 4 branches missed.">    private void validateRoles(Set&lt;Role&gt; roles) { if (roles == null || roles.isEmpty()) throw new BusinessRuleException(&quot;Asigna al menos una función.&quot;); }</span>
+    private void validatePassword(String password) {
+<span class="nc bnc" id="L106" title="All 6 branches missed.">        if (password == null || password.length() &lt; 12 || password.getBytes(StandardCharsets.UTF_8).length &gt; 72)</span>
+<span class="nc" id="L107">            throw new BusinessRuleException(&quot;La contraseña debe tener al menos 12 caracteres y un máximo de 72 bytes.&quot;);</span>
+<span class="nc" id="L108">    }</span>
+<span class="nc" id="L109">    static String token() { byte[] bytes=new byte[32]; new SecureRandom().nextBytes(bytes); return HexFormat.of().formatHex(bytes); }</span>
+    private static String hash(String value) {
+<span class="nc" id="L111">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(value.getBytes(StandardCharsets.UTF_8))); }</span>
+<span class="nc" id="L112">        catch (NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

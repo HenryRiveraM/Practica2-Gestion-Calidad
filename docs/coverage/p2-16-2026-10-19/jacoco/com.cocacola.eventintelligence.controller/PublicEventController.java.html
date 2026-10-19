@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PublicEventController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.controller</a> &gt; <span class="el_source">PublicEventController.java</span></div><h1>PublicEventController.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.controller;
+
+import com.cocacola.eventintelligence.dto.RegistrationRequest;
+import com.cocacola.eventintelligence.exception.ResourceNotFoundException;
+import com.cocacola.eventintelligence.security.RequestThrottle;
+import com.cocacola.eventintelligence.service.RegistrationService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.*;
+import java.util.Map;
+import java.util.List;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping(&quot;/api/public/events&quot;)
+public class PublicEventController {
+    private final JdbcTemplate jdbc;
+    private final RegistrationService registrations;
+    private final RequestThrottle throttle;
+<span class="nc" id="L21">    public PublicEventController(JdbcTemplate jdbc, RegistrationService registrations, RequestThrottle throttle) {</span>
+<span class="nc" id="L22">        this.jdbc=jdbc; this.registrations=registrations; this.throttle=throttle;</span>
+<span class="nc" id="L23">    }</span>
+<span class="nc" id="L24">    public record PublicRegistration(@NotBlank @Size(max=100) String firstName, @NotBlank @Size(max=100) String lastName,</span>
+        @NotBlank @Email @Size(max=255) String email, @Pattern(regexp=&quot;^$|^\\+?[0-9][0-9 ()-]{5,29}$&quot;) String phone,
+        @Size(max=100) String city, @Pattern(regexp=&quot;&lt;18|18-24|25-34|35-44|45-54|55\\+&quot;) String ageRange,
+        @Size(max=100) String productPreference, Boolean communicationConsent) {}
+    @GetMapping public List&lt;Map&lt;String,Object&gt;&gt; availableEvents() {
+<span class="nc" id="L29">        return jdbc.queryForList(&quot;&quot;&quot;</span>
+            SELECT e.id,e.name,e.type,e.event_date AS &quot;eventDate&quot;,e.location,e.description,e.status,p.token
+            FROM event_public_access p JOIN events e ON e.id=p.event_id
+            WHERE p.enabled=TRUE AND e.status IN ('PLANNED','ACTIVE')
+            ORDER BY CASE WHEN e.status='ACTIVE' THEN 0 ELSE 1 END,e.event_date,e.id
+            &quot;&quot;&quot;);
+    }
+    @GetMapping(&quot;/{token}&quot;) public Map&lt;String,Object&gt; event(@PathVariable String token) {
+<span class="nc" id="L37">        var rows=jdbc.queryForList(&quot;&quot;&quot;</span>
+            SELECT e.id,e.name,e.type,e.event_date AS &quot;eventDate&quot;,e.location,e.description
+            FROM event_public_access p JOIN events e ON e.id=p.event_id
+            WHERE p.token=? AND p.enabled=TRUE AND e.status IN ('PLANNED','ACTIVE')
+            &quot;&quot;&quot;,token);
+<span class="nc bnc" id="L42" title="All 2 branches missed.">        if(rows.isEmpty()) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, &quot;Inscripción no disponible&quot;);</span>
+<span class="nc" id="L43">        return rows.getFirst();</span>
+    }
+    @PostMapping(&quot;/{token}/registrations&quot;) public Map&lt;String,Object&gt; register(@PathVariable String token, @Valid @RequestBody PublicRegistration body, HttpServletRequest request) {
+<span class="nc" id="L46">        throttle.check(&quot;registration:&quot;+request.getRemoteAddr(),40);</span>
+<span class="nc" id="L47">        var event=event(token);</span>
+        com.cocacola.eventintelligence.dto.RegistrationResponse result;
+<span class="nc" id="L49">        try { result=registrations.register(new RegistrationRequest(((Number)event.get(&quot;id&quot;)).longValue(),body.firstName(),body.lastName(),body.email(),body.phone(),</span>
+<span class="nc" id="L50">                body.city(),body.ageRange(),body.productPreference(),body.communicationConsent()));</span>
+<span class="nc" id="L51">        } catch (com.cocacola.eventintelligence.exception.DuplicateRegistrationException ex) {</span>
+<span class="nc" id="L52">            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT, &quot;Este correo ya tiene una inscripción en el evento. Solicita ayuda al equipo de registro.&quot;);</span>
+<span class="nc" id="L53">        }</span>
+<span class="nc" id="L54">        return Map.of(&quot;eventName&quot;,result.eventName(),&quot;participantName&quot;,body.firstName().trim()+&quot; &quot;+body.lastName().trim(),&quot;qrToken&quot;,result.qrToken());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
