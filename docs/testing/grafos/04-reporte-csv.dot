@@ -1,0 +1,30 @@
+digraph CFG {
+graph [bgcolor="white", ranksep=0.38, nodesep=0.5, pad=0.25, labelloc=t, fontname="Arial", fontsize=17,
+label="EventReportService.generateEventCsv - modelo de flujo\nN = 10 | E = 11 | V(G) = 3"];
+node [shape=circle, width=0.45, fixedsize=true, fontname="Arial", style=filled, fillcolor=white, color="#334155"];
+edge [fontname="Arial", fontsize=11, color="#475569"];
+1 [label="1",fillcolor="white"];
+2 [label="2",fillcolor="white"];
+3 [label="3",fillcolor="#dbeafe"];
+4 [label="4",fillcolor="white"];
+5 [label="5",fillcolor="#dbeafe"];
+6 [label="6",fillcolor="white"];
+7 [label="7",fillcolor="white"];
+8 [label="8",fillcolor="white"];
+9 [label="9",fillcolor="white"];
+10 [label="10",fillcolor="white"];
+1 -> 2 [label=""];
+2 -> 3 [label=""];
+3 -> 4 [label="V"];
+3 -> 9 [label="F"];
+4 -> 5 [label=""];
+5 -> 6 [label="V"];
+6 -> 7 [label=""];
+7 -> 5 [label=""];
+5 -> 8 [label="F"];
+8 -> 10 [label=""];
+9 -> 10 [label=""];
+legend [shape=box,fixedsize=false,style=rounded,color="#cbd5e1",fontsize=11,margin=0.15,label="1. Inicio\l2. Obtener analytics, event y metrics\l3. getImpactScore retorna normalmente?\l4. Preparar 16 filas y cabecera con BOM\l5. Quedan filas por serializar?\l6. Escapar las tres celdas de la fila\l7. Unir con comas y agregar CRLF\l8. Retornar bytes UTF-8\l9. Propagar excepción del puntaje\l10. Salida unificada\l"];
+{rank=same;1;legend;}
+1 -> legend [style=invis];
+}

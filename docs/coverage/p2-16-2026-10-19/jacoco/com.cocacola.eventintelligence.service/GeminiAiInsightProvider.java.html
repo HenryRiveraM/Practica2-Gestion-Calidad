@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GeminiAiInsightProvider.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">GeminiAiInsightProvider.java</span></div><h1>GeminiAiInsightProvider.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import com.cocacola.eventintelligence.exception.AiProviderException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
+
+@Component
+public class GeminiAiInsightProvider implements AiInsightProvider {
+    private static final String MODEL = &quot;gemini-3.5-flash-lite&quot;;
+    private static final String API_URL =
+            &quot;https://generativelanguage.googleapis.com/v1beta/models/&quot; + MODEL + &quot;:generateContent&quot;;
+<span class="fc" id="L28">    private static final Pattern NUMBER_PATTERN = Pattern.compile(&quot;(?&lt;![\\p{L}\\w])[-+]?\\d+(?:[.,]\\d+)?&quot;);</span>
+    private static final int MAX_TEXT_LENGTH = 800;
+    private static final int MAX_LIST_ITEMS = 5;
+    private static final int MAX_SUMMARY_LENGTH = 400;
+    // Los modelos Gemini 2.5/3.x cuentan los tokens de &quot;thinking&quot; dentro de maxOutputTokens;
+    // con 700 el JSON quedaba cortado y fallaba el parseo.
+    private static final int MAX_OUTPUT_TOKENS = 2048;
+
+    private final String apiKey;
+    private final RestClient restClient;
+    private final ObjectMapper objectMapper;
+
+    public GeminiAiInsightProvider(
+            RestClient.Builder restClientBuilder,
+            ObjectMapper objectMapper,
+<span class="fc" id="L43">            @Value(&quot;${GEMINI_API_KEY:}&quot;) String apiKey) {</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        this.apiKey = apiKey == null ? &quot;&quot; : apiKey.trim();</span>
+<span class="fc" id="L45">        this.restClient = restClientBuilder.build();</span>
+<span class="fc" id="L46">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L47">    }</span>
+
+    @Override
+    public boolean isConfigured() {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        return !apiKey.isBlank();</span>
+    }
+
+    @Override
+    public InsightReport generate(Map&lt;String, Object&gt; eventAnalytics) {
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (!isConfigured()) {</span>
+<span class="fc" id="L57">            throw new AiProviderException(&quot;GEMINI_API_KEY no está configurada.&quot;);</span>
+        }
+
+<span class="fc" id="L60">        Map&lt;String, Object&gt; context = compactContext(eventAnalytics);</span>
+<span class="fc" id="L61">        String prompt = &quot;&quot;&quot;</span>
+                Analiza el siguiente JSON de métricas reales de un evento para marketing y organización.
+                Usa exclusivamente los datos proporcionados. No calcules métricas nuevas, no inventes cifras,
+                causas, comparaciones ni hechos. Si faltan datos, indícalo en el resumen o en la observación
+                correspondiente. Las conclusiones deben distinguir observaciones de hipótesis y las recomendaciones
+                deben ser acciones concretas basadas en observaciones. Devuelve únicamente un objeto JSON válido
+                con las propiedades: summary (cadena breve), insights (arreglo de cadenas, máximo 5),
+                anomalies (arreglo de cadenas, máximo 5) y recommendations (arreglo de cadenas, máximo 5).
+                Limita cada cadena a 240 caracteres y el resumen a 400 caracteres.
+                Escribe las cifras exactamente como aparecen en el JSON, sin redondear, sin sumar ni derivar valores
+                y sin mencionar números que no estén en los datos (por ejemplo, no cuentes elementos de una lista).
+                Datos:
+<span class="fc" id="L73">                &quot;&quot;&quot; + writeJson(context);</span>
+
+<span class="fc" id="L75">        Map&lt;String, Object&gt; request = Map.of(</span>
+<span class="fc" id="L76">                &quot;contents&quot;, List.of(Map.of(</span>
+                        &quot;role&quot;, &quot;user&quot;,
+<span class="fc" id="L78">                        &quot;parts&quot;, List.of(Map.of(&quot;text&quot;, prompt)))),</span>
+<span class="fc" id="L79">                &quot;generationConfig&quot;, Map.of(</span>
+<span class="fc" id="L80">                        &quot;temperature&quot;, 0.2,</span>
+<span class="fc" id="L81">                        &quot;maxOutputTokens&quot;, MAX_OUTPUT_TOKENS,</span>
+                        &quot;responseMimeType&quot;, &quot;application/json&quot;));
+
+        try {
+<span class="fc" id="L85">            JsonNode response = restClient.post()</span>
+<span class="fc" id="L86">                    .uri(API_URL)</span>
+<span class="fc" id="L87">                    .header(&quot;x-goog-api-key&quot;, apiKey)</span>
+<span class="fc" id="L88">                    .contentType(MediaType.APPLICATION_JSON)</span>
+<span class="fc" id="L89">                    .body(request)</span>
+<span class="fc" id="L90">                    .retrieve()</span>
+<span class="fc" id="L91">                    .body(JsonNode.class);</span>
+<span class="fc" id="L92">            String generatedText = extractText(response);</span>
+<span class="fc" id="L93">            InsightReport report = parseReport(generatedText);</span>
+<span class="fc" id="L94">            return keepGroundedClaims(report, context);</span>
+<span class="nc" id="L95">        } catch (AiProviderException ex) {</span>
+<span class="nc" id="L96">            throw ex;</span>
+<span class="fc" id="L97">        } catch (RestClientResponseException ex) {</span>
+<span class="fc" id="L98">            int status = ex.getStatusCode().value();</span>
+<span class="fc" id="L99">            throw new AiProviderException(</span>
+                    &quot;Gemini respondió con HTTP &quot; + status + &quot;.&quot;,
+<span class="fc" id="L101">                    clientMessageForStatus(ex.getStatusCode()),</span>
+                    ex);
+<span class="nc" id="L103">        } catch (RestClientException | IllegalArgumentException ex) {</span>
+<span class="nc" id="L104">            throw new AiProviderException(</span>
+                    &quot;No fue posible conectar con Gemini.&quot;,
+                    &quot;No se pudo conectar con Gemini. Comprueba la conexión a internet del backend y vuelve a intentarlo.&quot;,
+                    ex);
+        }
+    }
+
+    private static String clientMessageForStatus(HttpStatusCode status) {
+<span class="pc bpc" id="L112" title="4 of 5 branches missed.">        return switch (status.value()) {</span>
+<span class="nc" id="L113">            case 400 -&gt; &quot;Gemini rechazó la solicitud (HTTP 400). Verifica que la clave sea válida y que Gemini API esté habilitada en el proyecto asociado.&quot;;</span>
+<span class="fc" id="L114">            case 401, 403 -&gt; &quot;Gemini rechazó la autenticación o el acceso (HTTP &quot; + status.value()</span>
+                    + &quot;). Verifica que la clave esté activa y que sus restricciones permitan Gemini API.&quot;;
+<span class="nc" id="L116">            case 404 -&gt; &quot;Gemini no encontró el modelo o endpoint solicitado (HTTP 404). Verifica la disponibilidad del modelo para tu proyecto.&quot;;</span>
+<span class="nc" id="L117">            case 429 -&gt; &quot;Gemini alcanzó el límite de uso o cuota (HTTP 429). Revisa la cuota del proyecto y vuelve a intentarlo más tarde.&quot;;</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">            default -&gt; status.is5xxServerError()</span>
+<span class="nc" id="L119">                    ? &quot;Gemini presenta una interrupción temporal (HTTP &quot; + status.value() + &quot;). Intenta nuevamente más tarde.&quot;</span>
+<span class="nc" id="L120">                    : &quot;Gemini rechazó la solicitud (HTTP &quot; + status.value() + &quot;). Revisa la configuración de la API y vuelve a intentarlo.&quot;;</span>
+        };
+    }
+
+    @Override
+    public String providerName() {
+<span class="fc" id="L126">        return &quot;gemini&quot;;</span>
+    }
+
+    @Override
+    public String modelName() {
+<span class="fc" id="L131">        return MODEL;</span>
+    }
+
+    private Map&lt;String, Object&gt; compactContext(Map&lt;String, Object&gt; eventAnalytics) {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L136">        Map&lt;String, Object&gt; event = (Map&lt;String, Object&gt;) eventAnalytics.get(&quot;event&quot;);</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L138">        Map&lt;String, Object&gt; metrics = (Map&lt;String, Object&gt;) eventAnalytics.get(&quot;metrics&quot;);</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L140">        List&lt;Map&lt;String, Object&gt;&gt; activities = (List&lt;Map&lt;String, Object&gt;&gt;) eventAnalytics.get(&quot;activities&quot;);</span>
+
+<span class="fc" id="L142">        Map&lt;String, Object&gt; compact = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L143">        compact.put(&quot;eventId&quot;, event.get(&quot;id&quot;));</span>
+<span class="fc" id="L144">        compact.put(&quot;eventName&quot;, event.get(&quot;name&quot;));</span>
+<span class="fc" id="L145">        compact.put(&quot;eventDate&quot;, event.get(&quot;event_date&quot;));</span>
+
+<span class="fc" id="L147">        Map&lt;String, Object&gt; compactMetrics = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        for (String key : List.of(</span>
+                &quot;registered&quot;, &quot;attendees&quot;, &quot;attendance_rate&quot;, &quot;conversions&quot;, &quot;conversion_rate&quot;,
+                &quot;average_rating&quot;, &quot;nps&quot;, &quot;new_participants&quot;, &quot;recurrent_participants&quot;,
+                &quot;engaged_participants&quot;, &quot;engagement_rate&quot;)) {
+<span class="fc" id="L152">            compactMetrics.put(key, metrics.get(key));</span>
+<span class="fc" id="L153">        }</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L155">        List&lt;Map&lt;String, Object&gt;&gt; peakHours = (List&lt;Map&lt;String, Object&gt;&gt;) metrics.get(&quot;peakAttendanceHours&quot;);</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">        compactMetrics.put(&quot;peakAttendanceHours&quot;, peakHours == null ? List.of() : peakHours.stream().limit(5).toList());</span>
+<span class="fc" id="L157">        compact.put(&quot;metrics&quot;, compactMetrics);</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">        compact.put(&quot;activities&quot;, activities == null ? List.of() : activities.stream().limit(8)</span>
+<span class="fc" id="L159">                .map(activity -&gt; {</span>
+<span class="fc" id="L160">                    Map&lt;String, Object&gt; compactActivity = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L161">                    compactActivity.put(&quot;type&quot;, activity.get(&quot;type&quot;));</span>
+<span class="fc" id="L162">                    compactActivity.put(&quot;activityCount&quot;, activity.get(&quot;activity_count&quot;));</span>
+<span class="fc" id="L163">                    compactActivity.put(&quot;totalQuantity&quot;, activity.get(&quot;total_quantity&quot;));</span>
+<span class="fc" id="L164">                    compactActivity.put(&quot;participants&quot;, activity.get(&quot;participants&quot;));</span>
+<span class="fc" id="L165">                    return compactActivity;</span>
+                })
+<span class="fc" id="L167">                .toList());</span>
+<span class="fc" id="L168">        return compact;</span>
+    }
+
+    private String writeJson(Object value) {
+        try {
+<span class="fc" id="L173">            return objectMapper.writeValueAsString(value);</span>
+<span class="nc" id="L174">        } catch (Exception ex) {</span>
+<span class="nc" id="L175">            throw new AiProviderException(&quot;No fue posible preparar el contexto de métricas para Gemini.&quot;, ex);</span>
+        }
+    }
+
+    private String extractText(JsonNode response) {
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        JsonNode candidates = response == null ? null : response.path(&quot;candidates&quot;);</span>
+<span class="pc bpc" id="L181" title="3 of 6 branches missed.">        if (candidates == null || !candidates.isArray() || candidates.isEmpty()) {</span>
+<span class="nc" id="L182">            throw new AiProviderException(&quot;Gemini devolvió una respuesta sin contenido.&quot;);</span>
+        }
+<span class="fc" id="L184">        JsonNode candidate = candidates.get(0);</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if (&quot;MAX_TOKENS&quot;.equals(candidate.path(&quot;finishReason&quot;).asText(&quot;&quot;))) {</span>
+<span class="nc" id="L186">            throw new AiProviderException(</span>
+                    &quot;Gemini cortó la respuesta por límite de tokens (finishReason=MAX_TOKENS).&quot;,
+                    &quot;Gemini cortó la respuesta antes de terminar. Vuelve a intentarlo.&quot;,
+                    null);
+        }
+<span class="fc" id="L191">        JsonNode parts = candidate.path(&quot;content&quot;).path(&quot;parts&quot;);</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        if (!parts.isArray()) {</span>
+<span class="nc" id="L193">            throw new AiProviderException(&quot;Gemini devolvió una respuesta con formato inválido.&quot;);</span>
+        }
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">        for (JsonNode part : parts) {</span>
+<span class="fc" id="L196">            JsonNode text = part.get(&quot;text&quot;);</span>
+<span class="pc bpc" id="L197" title="3 of 6 branches missed.">            if (text != null &amp;&amp; text.isTextual() &amp;&amp; !text.asText().isBlank()) {</span>
+<span class="fc" id="L198">                return text.asText();</span>
+            }
+<span class="nc" id="L200">        }</span>
+<span class="nc" id="L201">        throw new AiProviderException(&quot;Gemini no devolvió texto de análisis.&quot;);</span>
+    }
+
+    private InsightReport parseReport(String json) {
+        try {
+<span class="fc" id="L206">            JsonNode root = objectMapper.readTree(stripCodeFence(json));</span>
+<span class="fc" id="L207">            return new InsightReport(</span>
+<span class="fc" id="L208">                    requiredText(root, &quot;summary&quot;, MAX_SUMMARY_LENGTH),</span>
+<span class="fc" id="L209">                    textArray(root, &quot;insights&quot;),</span>
+<span class="fc" id="L210">                    textArray(root, &quot;anomalies&quot;),</span>
+<span class="fc" id="L211">                    textArray(root, &quot;recommendations&quot;));</span>
+<span class="nc" id="L212">        } catch (AiProviderException ex) {</span>
+<span class="nc" id="L213">            throw ex;</span>
+<span class="nc" id="L214">        } catch (Exception ex) {</span>
+<span class="nc" id="L215">            throw new AiProviderException(&quot;Gemini devolvió un reporte que no es JSON válido.&quot;, ex);</span>
+        }
+    }
+
+    private static String stripCodeFence(String raw) {
+<span class="fc" id="L220">        String text = raw.trim();</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">        if (text.startsWith(&quot;```&quot;)) {</span>
+<span class="nc" id="L222">            int firstNewLine = text.indexOf('\n');</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            text = firstNewLine &lt; 0 ? &quot;&quot; : text.substring(firstNewLine + 1);</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">            if (text.endsWith(&quot;```&quot;)) {</span>
+<span class="nc" id="L225">                text = text.substring(0, text.length() - 3);</span>
+            }
+        }
+<span class="fc" id="L228">        return text.trim();</span>
+    }
+
+    private static String truncate(String text, int maxLength) {
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">        return text.length() &lt;= maxLength ? text : text.substring(0, maxLength - 1).trim() + &quot;…&quot;;</span>
+    }
+
+    private static String requiredText(JsonNode root, String key, int maxLength) {
+<span class="fc" id="L236">        JsonNode value = root.get(key);</span>
+<span class="pc bpc" id="L237" title="3 of 6 branches missed.">        if (value == null || !value.isTextual() || value.asText().isBlank()) {</span>
+<span class="nc" id="L238">            throw new AiProviderException(&quot;Gemini omitió el campo obligatorio: &quot; + key);</span>
+        }
+        // Un texto largo no es una cifra inventada: se recorta en lugar de descartar todo el reporte.
+<span class="fc" id="L241">        return truncate(value.asText().trim(), maxLength);</span>
+    }
+
+    private static List&lt;String&gt; textArray(JsonNode root, String key) {
+<span class="fc" id="L245">        JsonNode values = root.get(key);</span>
+<span class="pc bpc" id="L246" title="2 of 4 branches missed.">        if (values == null || values.isNull()) {</span>
+<span class="nc" id="L247">            return List.of();</span>
+        }
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">        if (!values.isArray()) {</span>
+<span class="nc" id="L250">            throw new AiProviderException(&quot;Gemini devolvió una lista inválida: &quot; + key);</span>
+        }
+<span class="fc" id="L252">        List&lt;String&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        for (JsonNode value : values) {</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">            if (result.size() &gt;= MAX_LIST_ITEMS) {</span>
+<span class="nc" id="L255">                break;</span>
+            }
+<span class="pc bpc" id="L257" title="2 of 4 branches missed.">            if (value.isTextual() &amp;&amp; !value.asText().isBlank()) {</span>
+<span class="fc" id="L258">                result.add(truncate(value.asText().trim(), MAX_TEXT_LENGTH));</span>
+            }
+<span class="fc" id="L260">        }</span>
+<span class="fc" id="L261">        return List.copyOf(result);</span>
+    }
+
+    /**
+     * Valida que las cifras del texto generado existan en los datos enviados.
+     * Un resumen con una cifra inventada invalida el reporte; en las listas se descartan
+     * solo los elementos con cifras no respaldadas, para no perder todo el análisis por una frase.
+     */
+    private InsightReport keepGroundedClaims(InsightReport report, Map&lt;String, Object&gt; context) {
+<span class="fc" id="L270">        Set&lt;String&gt; knownNumbers = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L271">        collectNumbers(context.get(&quot;metrics&quot;), knownNumbers);</span>
+<span class="fc" id="L272">        collectNumbers(context.get(&quot;activities&quot;), knownNumbers);</span>
+<span class="fc" id="L273">        addDerivedVariants(knownNumbers, context.get(&quot;metrics&quot;));</span>
+<span class="fc" id="L274">        Object eventDate = context.get(&quot;eventDate&quot;);</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">        if (eventDate != null) {</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">            for (String part : eventDate.toString().split(&quot;\\D+&quot;)) {</span>
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">                if (!part.isBlank()) {</span>
+<span class="fc" id="L278">                    knownNumbers.add(normalizeNumber(part));</span>
+                }
+            }
+        }
+
+<span class="fc" id="L283">        return new InsightReport(</span>
+<span class="fc" id="L284">                groundedSummary(report.summary(), knownNumbers),</span>
+<span class="fc" id="L285">                groundedOnly(report.insights(), knownNumbers),</span>
+<span class="fc" id="L286">                groundedOnly(report.anomalies(), knownNumbers),</span>
+<span class="fc" id="L287">                groundedOnly(report.recommendations(), knownNumbers));</span>
+    }
+
+    /**
+     * Si el resumen contiene cifras no respaldadas, se descartan solo las frases afectadas.
+     * Si no queda ninguna, se usa un resumen neutro sin cifras en lugar de fallar toda la solicitud.
+     */
+    private String groundedSummary(String summary, Set&lt;String&gt; knownNumbers) {
+<span class="fc bfc" id="L295" title="All 2 branches covered.">        if (firstUngroundedNumber(summary, knownNumbers) == null) {</span>
+<span class="fc" id="L296">            return summary;</span>
+        }
+<span class="fc" id="L298">        String kept = java.util.Arrays.stream(summary.split(&quot;(?&lt;=[.!?])\\s+&quot;))</span>
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">                .filter(sentence -&gt; firstUngroundedNumber(sentence, knownNumbers) == null)</span>
+<span class="fc" id="L300">                .collect(java.util.stream.Collectors.joining(&quot; &quot;))</span>
+<span class="fc" id="L301">                .trim();</span>
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">        return kept.isEmpty()</span>
+<span class="fc" id="L303">                ? &quot;Resumen basado en las métricas registradas del evento. Revisa las observaciones y recomendaciones.&quot;</span>
+<span class="nc" id="L304">                : kept;</span>
+    }
+
+    /** Variantes legítimas de una cifra real: redondeos de porcentajes y el fin de un rango horario. */
+    private void addDerivedVariants(Set&lt;String&gt; numbers, Object metrics) {
+<span class="fc" id="L309">        Set&lt;String&gt; variants = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L310" title="All 2 branches covered.">        for (String known : numbers) {</span>
+            try {
+<span class="fc" id="L312">                BigDecimal value = new BigDecimal(known);</span>
+<span class="fc" id="L313">                variants.add(value.setScale(0, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString());</span>
+<span class="fc" id="L314">                variants.add(value.setScale(0, java.math.RoundingMode.DOWN).stripTrailingZeros().toPlainString());</span>
+<span class="fc" id="L315">                variants.add(value.setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString());</span>
+<span class="nc" id="L316">            } catch (NumberFormatException ignored) {</span>
+                // no es numérico
+<span class="fc" id="L318">            }</span>
+<span class="fc" id="L319">        }</span>
+<span class="pc bpc" id="L320" title="2 of 4 branches missed.">        if (metrics instanceof Map&lt;?, ?&gt; map &amp;&amp; map.get(&quot;peakAttendanceHours&quot;) instanceof Iterable&lt;?&gt; hours) {</span>
+<span class="fc bfc" id="L321" title="All 2 branches covered.">            for (Object hour : hours) {</span>
+<span class="pc bpc" id="L322" title="2 of 4 branches missed.">                if (hour instanceof Map&lt;?, ?&gt; row &amp;&amp; row.get(&quot;hour&quot;) instanceof Number number) {</span>
+<span class="fc" id="L323">                    variants.add(String.valueOf((number.intValue() + 1) % 24));</span>
+                }
+<span class="fc" id="L325">            }</span>
+        }
+<span class="fc" id="L327">        numbers.addAll(variants);</span>
+<span class="fc" id="L328">    }</span>
+
+    private List&lt;String&gt; groundedOnly(List&lt;String&gt; items, Set&lt;String&gt; knownNumbers) {
+<span class="fc bfc" id="L331" title="All 2 branches covered.">        return items.stream().filter(item -&gt; firstUngroundedNumber(item, knownNumbers) == null).toList();</span>
+    }
+
+    private String firstUngroundedNumber(String text, Set&lt;String&gt; knownNumbers) {
+<span class="fc" id="L335">        Matcher matcher = NUMBER_PATTERN.matcher(text);</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        while (matcher.find()) {</span>
+<span class="pc bpc" id="L337" title="5 of 6 branches missed.">            if (&quot;00&quot;.equals(matcher.group()) &amp;&amp; matcher.start() &gt; 0 &amp;&amp; text.charAt(matcher.start() - 1) == ':') {</span>
+<span class="nc" id="L338">                continue;</span>
+            }
+<span class="fc" id="L340">            String numericClaim = normalizeNumber(matcher.group());</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">            if (!knownNumbers.contains(numericClaim)) {</span>
+<span class="fc" id="L342">                return matcher.group();</span>
+            }
+<span class="fc" id="L344">        }</span>
+<span class="fc" id="L345">        return null;</span>
+    }
+
+    private void collectNumbers(Object value, Set&lt;String&gt; numbers) {
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        if (value instanceof Number number) {</span>
+<span class="fc" id="L350">            numbers.add(normalizeNumber(number.toString()));</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        } else if (value instanceof Map&lt;?, ?&gt; map) {</span>
+<span class="fc" id="L352">            map.values().forEach(item -&gt; collectNumbers(item, numbers));</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">        } else if (value instanceof Iterable&lt;?&gt; iterable) {</span>
+<span class="fc" id="L354">            iterable.forEach(item -&gt; collectNumbers(item, numbers));</span>
+<span class="pc bpc" id="L355" title="1 of 2 branches missed.">        } else if (value != null) {</span>
+<span class="fc" id="L356">            Matcher matcher = NUMBER_PATTERN.matcher(value.toString());</span>
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">            while (matcher.find()) {</span>
+<span class="nc" id="L358">                numbers.add(normalizeNumber(matcher.group()));</span>
+            }
+        }
+<span class="fc" id="L361">    }</span>
+
+    private static String normalizeNumber(String value) {
+        try {
+<span class="fc" id="L365">            return new BigDecimal(value.replace(',', '.')).stripTrailingZeros().toPlainString();</span>
+<span class="nc" id="L366">        } catch (NumberFormatException ex) {</span>
+<span class="nc" id="L367">            return value;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

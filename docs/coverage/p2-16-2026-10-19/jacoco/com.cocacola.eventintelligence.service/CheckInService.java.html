@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CheckInService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">CheckInService.java</span></div><h1>CheckInService.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import com.cocacola.eventintelligence.dto.CheckInRequest;
+import com.cocacola.eventintelligence.dto.CheckInResponse;
+import com.cocacola.eventintelligence.entity.Attendance;
+import com.cocacola.eventintelligence.entity.Event;
+import com.cocacola.eventintelligence.entity.Participant;
+import com.cocacola.eventintelligence.entity.Registration;
+import com.cocacola.eventintelligence.exception.BusinessRuleException;
+import com.cocacola.eventintelligence.exception.DuplicateCheckInException;
+import com.cocacola.eventintelligence.exception.InvalidRegistrationTokenException;
+import com.cocacola.eventintelligence.repository.AttendanceRepository;
+import com.cocacola.eventintelligence.repository.EventRepository;
+import com.cocacola.eventintelligence.repository.ParticipantRepository;
+import com.cocacola.eventintelligence.repository.RegistrationRepository;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class CheckInService {
+    @org.springframework.beans.factory.annotation.Autowired
+    protected com.cocacola.eventintelligence.security.AccessPolicy access;
+
+    private static final String CHECKED_IN = &quot;CHECKED_IN&quot;;
+    private static final String CHECK_IN_METHOD = &quot;QR&quot;;
+<span class="fc" id="L32">    private static final Pattern UUID_PATTERN = Pattern.compile(</span>
+            &quot;[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}&quot;);
+<span class="fc" id="L34">    private static final java.util.Set&lt;String&gt; ATTENDANCE_UNIQUE_CONSTRAINTS = java.util.Set.of(</span>
+            &quot;uk_attendances_event_participant&quot;, &quot;uq_attendances_event_participant&quot;);
+
+    private final RegistrationRepository registrationRepository;
+    private final AttendanceRepository attendanceRepository;
+    private final EventRepository eventRepository;
+    private final ParticipantRepository participantRepository;
+
+    public CheckInService(
+            RegistrationRepository registrationRepository,
+            AttendanceRepository attendanceRepository,
+            EventRepository eventRepository,
+<span class="fc" id="L46">            ParticipantRepository participantRepository) {</span>
+<span class="fc" id="L47">        this.registrationRepository = registrationRepository;</span>
+<span class="fc" id="L48">        this.attendanceRepository = attendanceRepository;</span>
+<span class="fc" id="L49">        this.eventRepository = eventRepository;</span>
+<span class="fc" id="L50">        this.participantRepository = participantRepository;</span>
+<span class="fc" id="L51">    }</span>
+
+    @Transactional
+    public CheckInResponse checkIn(CheckInRequest request) {
+<span class="fc" id="L55">        String normalizedToken = extractToken(request.qrToken());</span>
+<span class="fc" id="L56">        Registration registration = registrationRepository.findByToken(normalizedToken)</span>
+<span class="fc" id="L57">                .orElseThrow(() -&gt; new InvalidRegistrationTokenException(&quot;No existe una inscripción para este QR&quot;));</span>
+<span class="fc" id="L58">        access.requireOperate(registration.getEventId());</span>
+<span class="fc" id="L59">        Event event = eventRepository.findById(registration.getEventId())</span>
+<span class="fc" id="L60">                .orElseThrow(() -&gt; new InvalidRegistrationTokenException(&quot;El evento de esta inscripción no existe&quot;));</span>
+<span class="fc" id="L61">        Participant participant = participantRepository.findById(registration.getParticipantId())</span>
+<span class="fc" id="L62">                .orElseThrow(() -&gt; new InvalidRegistrationTokenException(&quot;El participante de esta inscripción no existe&quot;));</span>
+
+<span class="fc" id="L64">        Attendance attendance = attendanceRepository</span>
+<span class="fc" id="L65">                .findByEventIdAndParticipantId(registration.getEventId(), registration.getParticipantId())</span>
+<span class="fc" id="L66">                .orElseGet(() -&gt; newAttendance(registration));</span>
+
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (CHECKED_IN.equals(attendance.getStatus())) {</span>
+<span class="fc" id="L69">            throw new DuplicateCheckInException();</span>
+        }
+
+<span class="fc" id="L72">        attendance.setStatus(CHECKED_IN);</span>
+<span class="fc" id="L73">        attendance.setCheckInAt(OffsetDateTime.now(ZoneOffset.UTC));</span>
+<span class="fc" id="L74">        attendance.setCheckInMethod(CHECK_IN_METHOD);</span>
+
+        try {
+<span class="fc" id="L77">            Attendance saved = attendanceRepository.saveAndFlush(attendance);</span>
+<span class="fc" id="L78">            return new CheckInResponse(</span>
+<span class="fc" id="L79">                    saved.getId(),</span>
+<span class="fc" id="L80">                    saved.getEventId(),</span>
+<span class="fc" id="L81">                    saved.getParticipantId(),</span>
+<span class="fc" id="L82">                    event.getName(),</span>
+<span class="fc" id="L83">                    participant.getFirstName() + &quot; &quot; + participant.getLastName(),</span>
+<span class="fc" id="L84">                    saved.getStatus(),</span>
+<span class="fc" id="L85">                    saved.getCheckInAt());</span>
+<span class="fc" id="L86">        } catch (DataIntegrityViolationException exception) {</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            if (isAttendanceUniqueConstraint(exception)) {</span>
+<span class="fc" id="L88">                throw new DuplicateCheckInException();</span>
+            }
+<span class="fc" id="L90">            throw exception;</span>
+        }
+    }
+
+    private Attendance newAttendance(Registration registration) {
+<span class="fc" id="L95">        Attendance attendance = new Attendance();</span>
+<span class="fc" id="L96">        attendance.setEventId(registration.getEventId());</span>
+<span class="fc" id="L97">        attendance.setParticipantId(registration.getParticipantId());</span>
+<span class="fc" id="L98">        return attendance;</span>
+    }
+
+    /**
+     * Extrae el UUID del texto recibido. Tolera espacios, prefijos como &quot;Token QR: &quot;
+     * o URLs que contengan el token, para no rechazar lecturas válidas del QR.
+     */
+    private String extractToken(String rawToken) {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (rawToken == null) {</span>
+<span class="fc" id="L107">            throw new BusinessRuleException(&quot;El token QR no es válido&quot;);</span>
+        }
+<span class="fc" id="L109">        Matcher matcher = UUID_PATTERN.matcher(rawToken);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (!matcher.find()) {</span>
+<span class="fc" id="L111">            throw new BusinessRuleException(&quot;El token QR no es válido&quot;);</span>
+        }
+<span class="fc" id="L113">        return UUID.fromString(matcher.group()).toString();</span>
+    }
+
+    private boolean isAttendanceUniqueConstraint(Throwable exception) {
+<span class="fc" id="L117">        Throwable cause = exception;</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        while (cause != null) {</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (cause instanceof org.hibernate.exception.ConstraintViolationException violation</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                    &amp;&amp; ATTENDANCE_UNIQUE_CONSTRAINTS.contains(violation.getConstraintName())) {</span>
+<span class="fc" id="L121">                return true;</span>
+            }
+<span class="fc" id="L123">            cause = cause.getCause();</span>
+        }
+<span class="fc" id="L125">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

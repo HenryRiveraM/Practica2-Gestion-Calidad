@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractCrudService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">AbstractCrudService.java</span></div><h1>AbstractCrudService.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import com.cocacola.eventintelligence.entity.BaseEntity;
+import com.cocacola.eventintelligence.exception.ResourceNotFoundException;
+import java.util.List;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.transaction.annotation.Transactional;
+
+@Transactional
+public abstract class AbstractCrudService&lt;T extends BaseEntity&gt; {
+    private final JpaRepository&lt;T, Long&gt; repository;
+    private final String resourceName;
+
+<span class="fc" id="L14">    protected AbstractCrudService(JpaRepository&lt;T, Long&gt; repository, String resourceName) {</span>
+<span class="fc" id="L15">        this.repository = repository;</span>
+<span class="fc" id="L16">        this.resourceName = resourceName;</span>
+<span class="fc" id="L17">    }</span>
+
+    @Transactional(readOnly = true)
+    public List&lt;T&gt; findAll() {
+<span class="nc" id="L21">        return repository.findAll();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public T findById(Long id) {
+<span class="nc" id="L26">        return repository.findById(id).orElseThrow(() -&gt; new ResourceNotFoundException(resourceName, id));</span>
+    }
+
+    public T create(T entity) {
+<span class="nc" id="L30">        entity.setId(null);</span>
+<span class="nc" id="L31">        validate(entity);</span>
+<span class="nc" id="L32">        return repository.save(entity);</span>
+    }
+
+    public T update(Long id, T entity) {
+<span class="nc" id="L36">        findById(id);</span>
+<span class="nc" id="L37">        entity.setId(id);</span>
+<span class="nc" id="L38">        validate(entity);</span>
+<span class="nc" id="L39">        return repository.save(entity);</span>
+    }
+
+    public void delete(Long id) {
+<span class="nc" id="L43">        repository.delete(findById(id));</span>
+<span class="nc" id="L44">    }</span>
+
+    protected void validate(T entity) {
+<span class="nc" id="L47">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
