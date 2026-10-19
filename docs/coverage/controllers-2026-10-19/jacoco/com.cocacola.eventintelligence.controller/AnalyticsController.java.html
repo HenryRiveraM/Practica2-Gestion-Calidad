@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AnalyticsController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.controller</a> &gt; <span class="el_source">AnalyticsController.java</span></div><h1>AnalyticsController.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.controller;
+
+import com.cocacola.eventintelligence.exception.ResourceNotFoundException;
+import com.cocacola.eventintelligence.exception.BusinessRuleException;
+import com.cocacola.eventintelligence.service.AnalyticsOverviewService;
+import com.cocacola.eventintelligence.service.EventImpactScoreService;
+import jakarta.validation.constraints.Positive;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping(&quot;/api/analytics&quot;)
+@Validated
+public class AnalyticsController {
+    @org.springframework.beans.factory.annotation.Autowired
+    protected com.cocacola.eventintelligence.security.AccessPolicy access;
+
+    private final JdbcTemplate jdbcTemplate;
+    private final AnalyticsOverviewService overviewService;
+    private final EventImpactScoreService impactScoreService;
+
+    public AnalyticsController(
+            JdbcTemplate jdbcTemplate,
+            AnalyticsOverviewService overviewService,
+<span class="fc" id="L34">            EventImpactScoreService impactScoreService) {</span>
+<span class="fc" id="L35">        this.jdbcTemplate = jdbcTemplate;</span>
+<span class="fc" id="L36">        this.overviewService = overviewService;</span>
+<span class="fc" id="L37">        this.impactScoreService = impactScoreService;</span>
+<span class="fc" id="L38">    }</span>
+
+    @GetMapping(&quot;/overview&quot;)
+    public Map&lt;String, Object&gt; overview(
+            @RequestParam(required = false) @Positive Long eventId,
+            @RequestParam(required = false) @Positive Long campaignId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+<span class="fc bfc" id="L46" title="All 6 branches covered.">        if (startDate != null &amp;&amp; endDate != null &amp;&amp; startDate.isAfter(endDate)) {</span>
+<span class="fc" id="L47">            throw new BusinessRuleException(&quot;La fecha inicial no puede ser posterior a la fecha final&quot;);</span>
+        }
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (eventId != null) access.requireEvent(eventId);</span>
+<span class="fc" id="L50">        return overviewService.getScopedOverview(eventId, campaignId, startDate, endDate, access.eventScope());</span>
+    }
+
+    @GetMapping(&quot;/events&quot;)
+    public List&lt;Map&lt;String, Object&gt;&gt; eventPerformance() {
+<span class="fc" id="L55">        return jdbcTemplate.queryForList(</span>
+                &quot;SELECT event_id, event_name, event_date, campaign_name, registered, attended, attendance_rate_pct, &quot; +
+                &quot;participation_rate_pct, conversion_rate_pct, avg_overall_satisfaction, nps, cost_per_attendee &quot; +
+<span class="fc" id="L58">                &quot;FROM vw_event_performance&quot; + scopeSql() + &quot; ORDER BY event_date&quot;);</span>
+    }
+
+    @GetMapping(&quot;/events/{eventId}&quot;)
+    public Map&lt;String, Object&gt; eventPerformanceById(@PathVariable Long eventId) {
+<span class="fc" id="L63">        access.requireEvent(eventId);</span>
+<span class="fc" id="L64">        List&lt;Map&lt;String, Object&gt;&gt; rows = jdbcTemplate.queryForList(</span>
+                &quot;SELECT * FROM vw_event_performance WHERE event_id = ?&quot;, eventId);
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (rows.isEmpty()) {</span>
+<span class="fc" id="L67">            throw new ResourceNotFoundException(&quot;Evento&quot;, eventId);</span>
+        }
+<span class="fc" id="L69">        return rows.getFirst();</span>
+    }
+
+    @GetMapping(&quot;/events/{eventId}/impact-score&quot;)
+    public Map&lt;String, Object&gt; eventImpactScore(@PathVariable @Positive Long eventId) {
+<span class="fc" id="L74">        access.requireEvent(eventId);</span>
+<span class="fc" id="L75">        return impactScoreService.getImpactScore(eventId);</span>
+    }
+
+    @GetMapping(&quot;/campaigns&quot;)
+    public List&lt;Map&lt;String, Object&gt;&gt; campaignPerformance() {
+<span class="fc" id="L80">        return jdbcTemplate.queryForList(</span>
+                &quot;SELECT campaign_id, campaign_name, events_count, registered, attended, total_conversions, conversion_rate_pct, unique_attendees, avg_satisfaction, nps &quot; +
+                &quot;FROM vw_campaign_performance ORDER BY campaign_id&quot;);
+    }
+
+    @GetMapping(&quot;/activities&quot;)
+    public List&lt;Map&lt;String, Object&gt;&gt; activityAnalysis() {
+<span class="fc" id="L87">        return jdbcTemplate.queryForList(</span>
+                &quot;SELECT event_name, activity_name, type, unique_participants, total_interactions, participation_rate_pct, popularity_rank &quot; +
+<span class="fc" id="L89">                &quot;FROM vw_activity_analysis&quot; + scopeSql() + &quot; ORDER BY event_id, popularity_rank&quot;);</span>
+    }
+
+    @GetMapping(&quot;/products&quot;)
+    public List&lt;Map&lt;String, Object&gt;&gt; productAnalysis() {
+<span class="fc" id="L94">        return jdbcTemplate.queryForList(</span>
+                &quot;SELECT event_name, product_name, category, total_interactions, total_tried, avg_rating, intent_low, intent_medium, intent_high, avg_intent_score &quot; +
+<span class="fc" id="L96">                &quot;FROM vw_product_analysis&quot; + scopeSql() + &quot; ORDER BY event_id, product_name&quot;);</span>
+    }
+
+    @GetMapping(&quot;/participants&quot;)
+    public List&lt;Map&lt;String, Object&gt;&gt; participantAnalysis() {
+<span class="fc" id="L101">        return jdbcTemplate.queryForList(</span>
+                &quot;SELECT participant_id, full_name, city, age_range, product_preference, communication_consent, registration_source, events_attended, loyalty_status &quot; +
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                &quot;FROM vw_participant_analysis&quot; + (access.role() == com.cocacola.eventintelligence.security.Role.MARKETING ? &quot; WHERE communication_consent=TRUE&quot; : &quot;&quot;) + &quot; ORDER BY participant_id&quot;);</span>
+    }
+
+    @GetMapping(&quot;/loyalty&quot;)
+    public List&lt;Map&lt;String, Object&gt;&gt; loyaltySummary() {
+<span class="fc" id="L108">        return jdbcTemplate.queryForList(</span>
+                &quot;SELECT loyalty_status, COUNT(*) AS participants FROM vw_participant_analysis GROUP BY loyalty_status ORDER BY loyalty_status&quot;);
+    }
+    private String scopeSql() {
+<span class="fc" id="L112">        var scope=access.eventScope();</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if(scope==null) return &quot;&quot;;</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if(scope.isEmpty()) return &quot; WHERE 1=0&quot;;</span>
+<span class="fc" id="L115">        return &quot; WHERE event_id IN (&quot; + scope.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(&quot;,&quot;)) + &quot;)&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

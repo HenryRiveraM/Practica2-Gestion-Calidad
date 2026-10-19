@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnavailableAiInsightProvider.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">UnavailableAiInsightProvider.java</span></div><h1>UnavailableAiInsightProvider.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import com.cocacola.eventintelligence.exception.AiProviderException;
+import java.util.Map;
+
+<span class="nc" id="L6">public class UnavailableAiInsightProvider implements AiInsightProvider {</span>
+    @Override
+    public boolean isConfigured() {
+<span class="nc" id="L9">        return false;</span>
+    }
+
+    @Override
+    public InsightReport generate(Map&lt;String, Object&gt; eventAnalytics) {
+<span class="nc" id="L14">        throw new AiProviderException(&quot;No hay un proveedor de IA configurado.&quot;);</span>
+    }
+
+    @Override
+    public String providerName() {
+<span class="nc" id="L19">        return &quot;unavailable&quot;;</span>
+    }
+
+    @Override
+    public String modelName() {
+<span class="nc" id="L24">        return &quot;none&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

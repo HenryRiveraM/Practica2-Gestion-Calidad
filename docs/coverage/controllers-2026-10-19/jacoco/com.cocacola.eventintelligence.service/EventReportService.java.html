@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventReportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">EventReportService.java</span></div><h1>EventReportService.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.springframework.stereotype.Service;
+
+@Service
+public class EventReportService {
+    private static final String CSV_HEADER = &quot;Sección,Indicador,Valor&quot;;
+
+    private final AnalyticsOverviewService analyticsService;
+    private final EventImpactScoreService impactScoreService;
+
+    public EventReportService(
+            AnalyticsOverviewService analyticsService,
+<span class="fc" id="L18">            EventImpactScoreService impactScoreService) {</span>
+<span class="fc" id="L19">        this.analyticsService = analyticsService;</span>
+<span class="fc" id="L20">        this.impactScoreService = impactScoreService;</span>
+<span class="fc" id="L21">    }</span>
+
+    public byte[] generateEventCsv(long eventId) {
+<span class="fc" id="L24">        Map&lt;String, Object&gt; analytics = analyticsService.getEventInsightData(eventId);</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L26">        Map&lt;String, Object&gt; event = (Map&lt;String, Object&gt;) analytics.get(&quot;event&quot;);</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L28">        Map&lt;String, Object&gt; metrics = (Map&lt;String, Object&gt;) analytics.get(&quot;metrics&quot;);</span>
+<span class="fc" id="L29">        Map&lt;String, Object&gt; impactScore = impactScoreService.getImpactScore(eventId);</span>
+
+<span class="fc" id="L31">        List&lt;List&lt;String&gt;&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L32">        rows.add(List.of(&quot;Evento&quot;, &quot;ID&quot;, value(event.get(&quot;id&quot;))));</span>
+<span class="fc" id="L33">        rows.add(List.of(&quot;Evento&quot;, &quot;Nombre&quot;, value(event.get(&quot;name&quot;))));</span>
+<span class="fc" id="L34">        rows.add(List.of(&quot;Evento&quot;, &quot;Fecha&quot;, value(event.get(&quot;event_date&quot;))));</span>
+<span class="fc" id="L35">        rows.add(List.of(&quot;Evento&quot;, &quot;Ubicación&quot;, value(event.get(&quot;location&quot;))));</span>
+<span class="fc" id="L36">        rows.add(List.of(&quot;Evento&quot;, &quot;Campaña&quot;, value(event.get(&quot;campaign_name&quot;))));</span>
+<span class="fc" id="L37">        rows.add(List.of(&quot;Participación&quot;, &quot;Participantes registrados&quot;, value(metrics.get(&quot;registered&quot;))));</span>
+<span class="fc" id="L38">        rows.add(List.of(&quot;Participación&quot;, &quot;Asistentes&quot;, value(metrics.get(&quot;attendees&quot;))));</span>
+<span class="fc" id="L39">        rows.add(List.of(&quot;Participación&quot;, &quot;Tasa de asistencia (%)&quot;, value(metrics.get(&quot;attendance_rate&quot;))));</span>
+<span class="fc" id="L40">        rows.add(List.of(&quot;Conversión&quot;, &quot;Conversiones&quot;, value(metrics.get(&quot;conversions&quot;))));</span>
+<span class="fc" id="L41">        rows.add(List.of(&quot;Conversión&quot;, &quot;Tasa de conversión (%)&quot;, value(metrics.get(&quot;conversion_rate&quot;))));</span>
+<span class="fc" id="L42">        rows.add(List.of(&quot;Satisfacción&quot;, &quot;Rating promedio&quot;, value(metrics.get(&quot;average_rating&quot;))));</span>
+<span class="fc" id="L43">        rows.add(List.of(&quot;Satisfacción&quot;, &quot;NPS&quot;, value(metrics.get(&quot;nps&quot;))));</span>
+<span class="fc" id="L44">        rows.add(List.of(&quot;Participantes&quot;, &quot;Participantes nuevos&quot;, value(metrics.get(&quot;new_participants&quot;))));</span>
+<span class="fc" id="L45">        rows.add(List.of(&quot;Participantes&quot;, &quot;Participantes recurrentes&quot;, value(metrics.get(&quot;recurrent_participants&quot;))));</span>
+<span class="fc" id="L46">        rows.add(List.of(&quot;Impacto&quot;, &quot;Event Impact Score&quot;, value(impactScore.get(&quot;score&quot;))));</span>
+<span class="fc" id="L47">        rows.add(List.of(&quot;Impacto&quot;, &quot;Estado del score&quot;, value(impactScore.get(&quot;status&quot;))));</span>
+
+<span class="fc" id="L49">        StringBuilder csv = new StringBuilder(&quot;\uFEFF&quot;).append(CSV_HEADER).append(&quot;\r\n&quot;);</span>
+<span class="fc" id="L50">        rows.forEach(row -&gt; csv.append(row.stream().map(EventReportService::escapeCsv)</span>
+<span class="fc" id="L51">                .reduce((left, right) -&gt; left + &quot;,&quot; + right).orElse(&quot;&quot;))</span>
+<span class="fc" id="L52">                .append(&quot;\r\n&quot;));</span>
+<span class="fc" id="L53">        return csv.toString().getBytes(StandardCharsets.UTF_8);</span>
+    }
+
+    private static String value(Object value) {
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        return value == null ? &quot;Sin datos&quot; : value.toString();</span>
+    }
+
+    private static String escapeCsv(String value) {
+<span class="fc" id="L61">        String safeValue = value;</span>
+<span class="fc" id="L62">        boolean negativeNumber = safeValue.matches(&quot;-\\d+(?:\\.\\d+)?&quot;);</span>
+<span class="pc bpc" id="L63" title="2 of 4 branches missed.">        if ((!safeValue.isEmpty() &amp;&amp; &quot;=+@&quot;.indexOf(safeValue.charAt(0)) &gt;= 0)</span>
+<span class="pc bpc" id="L64" title="3 of 4 branches missed.">                || (safeValue.startsWith(&quot;-&quot;) &amp;&amp; !negativeNumber)) {</span>
+<span class="nc" id="L65">            safeValue = &quot;'&quot; + safeValue;</span>
+        }
+<span class="fc" id="L67">        return &quot;\&quot;&quot; + safeValue.replace(&quot;\&quot;&quot;, &quot;\&quot;\&quot;&quot;) + &quot;\&quot;&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

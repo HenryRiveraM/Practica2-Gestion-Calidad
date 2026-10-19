@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SurveyRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.dto</a> &gt; <span class="el_source">SurveyRequest.java</span></div><h1>SurveyRequest.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.dto;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+
+<span class="fc" id="L9">public record SurveyRequest(</span>
+        @NotNull(message = &quot;El evento es obligatorio&quot;)
+        @Positive(message = &quot;El evento debe ser válido&quot;)
+        Long eventId,
+        @NotNull(message = &quot;El participante es obligatorio&quot;)
+        @Positive(message = &quot;El participante debe ser válido&quot;)
+        Long participantId,
+        @NotNull(message = &quot;La calificación es obligatoria&quot;)
+        @Min(value = 1, message = &quot;La calificación mínima es 1&quot;)
+        @Max(value = 5, message = &quot;La calificación máxima es 5&quot;)
+        Short rating,
+        @NotNull(message = &quot;El NPS es obligatorio&quot;)
+        @Min(value = 0, message = &quot;El NPS mínimo es 0&quot;)
+        @Max(value = 10, message = &quot;El NPS máximo es 10&quot;)
+        Short nps,
+        @Size(max = 2000, message = &quot;El comentario no puede superar 2000 caracteres&quot;)
+        String comment) {
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
