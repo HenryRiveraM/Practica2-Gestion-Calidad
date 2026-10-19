@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ActivityService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.service</a> &gt; <span class="el_source">ActivityService.java</span></div><h1>ActivityService.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.service;
+
+import com.cocacola.eventintelligence.entity.Activity;
+import com.cocacola.eventintelligence.entity.Event;
+import com.cocacola.eventintelligence.dto.ActivityRequest;
+import com.cocacola.eventintelligence.exception.ResourceNotFoundException;
+import com.cocacola.eventintelligence.repository.ActivityRepository;
+import com.cocacola.eventintelligence.repository.EventRepository;
+import com.cocacola.eventintelligence.repository.ParticipantRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class ActivityService extends AbstractCrudService&lt;Activity&gt; {
+    private final ActivityRepository activityRepository;
+    private final EventRepository eventRepository;
+    private final ParticipantRepository participantRepository;
+
+    public ActivityService(
+            ActivityRepository repository,
+            EventRepository eventRepository,
+            ParticipantRepository participantRepository) {
+<span class="fc" id="L23">        super(repository, &quot;Actividad&quot;);</span>
+<span class="fc" id="L24">        this.activityRepository = repository;</span>
+<span class="fc" id="L25">        this.eventRepository = eventRepository;</span>
+<span class="fc" id="L26">        this.participantRepository = participantRepository;</span>
+<span class="fc" id="L27">    }</span>
+
+    @Transactional
+    public Activity record(ActivityRequest request) {
+<span class="fc" id="L31">        Event event = eventRepository.findById(request.eventId())</span>
+<span class="pc" id="L32">                .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Evento&quot;, request.eventId()));</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if (request.participantId() != null) {</span>
+<span class="fc" id="L34">            participantRepository.findById(request.participantId())</span>
+<span class="pc" id="L35">                    .orElseThrow(() -&gt; new ResourceNotFoundException(&quot;Participante&quot;, request.participantId()));</span>
+        }
+
+<span class="fc" id="L38">        Activity activity = new Activity();</span>
+<span class="fc" id="L39">        activity.setEventId(event.getId());</span>
+<span class="fc" id="L40">        activity.setParticipantId(request.participantId());</span>
+<span class="fc" id="L41">        activity.setName(request.type().trim());</span>
+<span class="fc" id="L42">        activity.setType(request.type().trim());</span>
+<span class="fc" id="L43">        activity.setQuantity(request.quantity());</span>
+<span class="fc" id="L44">        activity.setResult(request.result().trim());</span>
+<span class="fc" id="L45">        activity.setStartAt(request.occurredAt());</span>
+<span class="fc" id="L46">        activity.setStatus(&quot;COMPLETED&quot;);</span>
+<span class="fc" id="L47">        return activityRepository.save(activity);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

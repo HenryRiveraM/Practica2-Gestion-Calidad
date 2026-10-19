@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AccessPolicy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">event-intelligence</a> &gt; <a href="index.source.html" class="el_package">com.cocacola.eventintelligence.security</a> &gt; <span class="el_source">AccessPolicy.java</span></div><h1>AccessPolicy.java</h1><pre class="source lang-java linenums">package com.cocacola.eventintelligence.security;
+
+import com.cocacola.eventintelligence.entity.*;
+import java.util.*;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+
+@Component
+public class AccessPolicy {
+    private final JdbcTemplate jdbc;
+<span class="fc" id="L13">    public AccessPolicy(JdbcTemplate jdbc) { this.jdbc = jdbc; }</span>
+    public Account account() {
+<span class="fc" id="L15">        var auth = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L16" title="2 of 4 branches missed.">        if (auth == null || !(auth.getPrincipal() instanceof Account account)) throw denied();</span>
+<span class="fc" id="L17">        return account;</span>
+    }
+    public Role role() {
+<span class="fc" id="L20">        account();</span>
+<span class="fc" id="L21">        return SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()</span>
+<span class="fc" id="L22">                .map(a -&gt; a.getAuthority()).filter(a -&gt; a.startsWith(&quot;ROLE_&quot;)).map(a -&gt; Role.valueOf(a.substring(5)))</span>
+<span class="fc" id="L23">                .findFirst().orElseThrow(AccessPolicy::denied);</span>
+    }
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">    public boolean isOrganizer() { return role() == Role.ORGANIZADOR; }</span>
+<span class="nc bnc" id="L26" title="All 2 branches missed.">    public void requireAdmin() { if (role() != Role.ADMINISTRADOR) throw denied(); }</span>
+<span class="nc bnc" id="L27" title="All 2 branches missed.">    public void requireReports() { if (!role().permissions().contains(&quot;reports&quot;)) throw denied(); }</span>
+    public void requireEvent(Long eventId) {
+<span class="pc bpc" id="L29" title="2 of 6 branches missed.">        if (eventId == null || (isOrganizer() &amp;&amp; !account().eventIds().contains(eventId))) throw denied();</span>
+<span class="fc" id="L30">    }</span>
+    public void requireOperate(Long eventId) {
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (!role().permissions().contains(&quot;operations&quot;)) throw denied();</span>
+<span class="fc" id="L33">        requireEvent(eventId);</span>
+<span class="fc" id="L34">    }</span>
+    public void requireParticipantAtEvent(Long eventId, Long participantId) {
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">        if (participantId == null) return;</span>
+<span class="fc" id="L37">        boolean present = Boolean.TRUE.equals(jdbc.queryForObject(&quot;SELECT EXISTS(SELECT 1 FROM registrations WHERE event_id=? AND participant_id=? UNION ALL SELECT 1 FROM attendances WHERE event_id=? AND participant_id=?)&quot;, Boolean.class, eventId,participantId,eventId,participantId));</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (!present) throw denied();</span>
+<span class="fc" id="L39">    }</span>
+<span class="nc bnc" id="L40" title="All 2 branches missed.">    public Set&lt;Long&gt; eventScope() { return isOrganizer() ? account().eventIds() : null; }</span>
+    public boolean canRead(BaseEntity entity) {
+<span class="nc" id="L42">        Role role = role();</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">        if (role == Role.ADMINISTRADOR) return true;</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">        if (entity instanceof Participant p) {</span>
+<span class="nc bnc" id="L45" title="All 2 branches missed.">            if (role == Role.MARKETING) return Boolean.TRUE.equals(p.getCommunicationConsent());</span>
+<span class="nc" id="L46">            return jdbc.queryForObject(&quot;&quot;&quot;</span>
+                SELECT EXISTS(SELECT 1 FROM app_user_events ue WHERE ue.user_id = ? AND (
+                    EXISTS(SELECT 1 FROM registrations r WHERE r.event_id=ue.event_id AND r.participant_id=?) OR
+                    EXISTS(SELECT 1 FROM attendances a WHERE a.event_id=ue.event_id AND a.participant_id=?)))
+<span class="nc" id="L50">                &quot;&quot;&quot;, Boolean.class, account().id(), p.getId(), p.getId());</span>
+        }
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (entity instanceof Product) return true;</span>
+<span class="nc bnc" id="L53" title="All 6 branches missed.">        if (entity instanceof Campaign c) return role == Role.MARKETING || jdbc.queryForObject(&quot;&quot;&quot;</span>
+            SELECT EXISTS(SELECT 1 FROM app_user_events ue JOIN events e ON e.id=ue.event_id WHERE ue.user_id=? AND e.campaign_id=?)
+<span class="nc" id="L55">            &quot;&quot;&quot;, Boolean.class, account().id(), c.getId());</span>
+<span class="nc" id="L56">        Long eventId = eventOf(entity);</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">        if (eventId == null) return false;</span>
+<span class="nc bnc" id="L58" title="All 6 branches missed.">        if (role == Role.MARKETING) return entity instanceof Event || entity instanceof EventProduct;</span>
+<span class="nc" id="L59">        return account().eventIds().contains(eventId);</span>
+    }
+<span class="nc bnc" id="L61" title="All 2 branches missed.">    public void requireRead(BaseEntity entity) { if (!canRead(entity)) throw denied(); }</span>
+    public void requireWrite(BaseEntity entity) {
+<span class="fc" id="L63">        Long activityId = null;</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (entity instanceof Interaction e) activityId=e.getActivityId();</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (entity instanceof ProductInteraction e) activityId=e.getActivityId();</span>
+<span class="pc bpc" id="L66" title="1 of 4 branches missed.">        if (activityId != null &amp;&amp; !Boolean.TRUE.equals(jdbc.queryForObject(&quot;SELECT EXISTS(SELECT 1 FROM activities WHERE id=? AND event_id=?)&quot;, Boolean.class, activityId, eventOf(entity)))) throw denied();</span>
+<span class="fc" id="L67">        Long participant = null;</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (entity instanceof Activity e) participant=e.getParticipantId();</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (entity instanceof Survey e) participant=e.getParticipantId();</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (entity instanceof Interaction e) participant=e.getParticipantId();</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        if (entity instanceof ProductInteraction e) participant=e.getParticipantId();</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (entity instanceof Conversion e) participant=e.getParticipantId();</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        if (participant != null) requireParticipantAtEvent(eventOf(entity), participant);</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">        if (role() == Role.ADMINISTRADOR) return;</span>
+<span class="pc bpc" id="L75" title="8 of 10 branches missed.">        if (entity instanceof Activity || entity instanceof Survey || entity instanceof Interaction || entity instanceof ProductInteraction || entity instanceof Conversion) {</span>
+<span class="fc" id="L76">            requireOperate(eventOf(entity));</span>
+<span class="fc" id="L77">            return;</span>
+        }
+<span class="nc" id="L79">        throw denied();</span>
+    }
+    public static Long eventOf(BaseEntity entity) {
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (entity instanceof Event e) return e.getId();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        if (entity instanceof Activity e) return e.getEventId();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (entity instanceof Survey e) return e.getEventId();</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (entity instanceof Attendance e) return e.getEventId();</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (entity instanceof Interaction e) return e.getEventId();</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (entity instanceof ProductInteraction e) return e.getEventId();</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        if (entity instanceof Conversion e) return e.getEventId();</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (entity instanceof EventProduct e) return e.getEventId();</span>
+<span class="nc" id="L90">        return null;</span>
+    }
+<span class="fc" id="L92">    private static AccessDeniedException denied() { return new AccessDeniedException(&quot;No tienes permiso para esta operación o evento.&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
